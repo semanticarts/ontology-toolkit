@@ -11,21 +11,28 @@ from rdflib.namespace import RDF, RDFS, OWL, SKOS, NamespaceManager
 from rdflib.util import guess_format
 
 parser = argparse.ArgumentParser(description='Ontology toolkit.')
-parser.add_argument('--defined-by', action="store_true",
+parser.add_argument('-o', '--output-format', action='store',
+                    default='turtle',
+                    choices=['xml','turtle','n3'],
+                    help='Output format')
+subparsers = parser.add_subparsers(help='sub-command help')
+
+update_parser = subparsers.add_parser('update',help='Update versions and dependencies')
+update_parser.add_argument('-b', '--defined-by', action="store_true",
                     help='Add rdfs:isDefinedBy to every resource defined.')
-parser.add_argument('--set-version', action="store",
+update_parser.add_argument('-v', '--set-version', action="store",
                     help='Set the version of the defined ontology')
-parser.add_argument('--dependency-version', action="append",
+update_parser.add_argument('-d','--dependency-version', action="append",
                     metavar=('DEPENDENCY','VERSION'),
                     nargs=2, default=[], 
                     help='Update the import of DEPENDENCY to VERSION')
-parser.add_argument('--nonversioned-dependencies', action="store_true",
+update_parser.add_argument('ontology', nargs="*", default=[],
+                    help="Ontology file")
+
+export_parser = subparsers.add_parser('export',help='Export ontology')
+export_parser.add_argument('-s', '--strip-versions', action="store_true",
                     help='Remove versions from imports.')
-parser.add_argument('--output-format', action='store',
-                    metavar='FORMAT',
-                    default='turtle',
-                    choices=['xml','turtle','n3'])
-parser.add_argument('ontology', nargs="*", default=[],
+export_parser.add_argument('ontology', nargs="*", default=[],
                     help="Ontology file")
 
 args = parser.parse_args()
@@ -53,7 +60,7 @@ for onto_file in args.ontology:
         ontologyIRI = ontology
 
     # Set version
-    if args.set_version:
+    if 'set_version' in args:
         g.add((ontology, OWL.ontologyIRI, ontologyIRI))
         logging.debug(f'ontologyIRI {ontologyIRI} added for {ontology}')
         
@@ -67,7 +74,7 @@ for onto_file in args.ontology:
         logging.debug(f'versionIRI {versionIRI} added for {ontology}')
 
     # Add definedBy
-    if args.defined_by:
+    if 'defined_by' in args:
         definitions = g.query("""
         SELECT distinct ?defined ?label ?defBy WHERE {
           VALUES ?dtype { owl:Class owl:ObjectProperty owl:DatatypeProperty }
@@ -87,9 +94,9 @@ for onto_file in args.ontology:
                 g.add((d.defined, RDFS.isDefinedBy, ontologyIRI))
 
     # Update dep versions
-    if len(args.dependency_version):
+    if 'dependency_version' in args and len(args.dependency_version):
         # Gather current dependencies
-        currentDeps = g.objects(ontology, OWL.imports)       
+        currentDeps = g.objects(ontology, OWL.imports)
         for dv in args.dependency_version:
             dep, ver = dv
             pattern = re.compile(f'{dep}(\d+\.\d+\.\d+)?')
@@ -112,9 +119,18 @@ for onto_file in args.ontology:
                 newVersionURI = URIRef(f'{dep}{ver}')
                 g.add((ontology, OWL.imports, newVersionURI))
                 logging.info(f'Added dependency for {newVersionURI}')
-                
-        
+
     # Remove dep versions
+    if 'strip_versions' in args:
+        # Gather current dependencies
+        currentDeps = g.objects(ontology, OWL.imports)
+        pattern = re.compile('^(.*)(\d+\.\d+\.\d+)?')
+        for d in currentDeps:
+            match = pattern.match(str(d))
+            if match.group(2):
+                logging.debug(f'Removing version for {d}')
+                g.remove((ontology, OWL.imports, d))
+                g.add((ontology, OWL.imports, URIRef(match.group(1))))
 
     # Output
     of = 'pretty-xml' if args.output_format == 'xml' else args.output_format

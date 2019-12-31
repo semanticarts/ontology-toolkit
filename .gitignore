@@ -1,0 +1,7 @@
+# Python virtual env
+venv/
+__pycache__/
+
+# Spyder projects
+.spyproject/
+
