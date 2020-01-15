@@ -32,6 +32,8 @@ def configureArgParser():
     export_parser = subparsers.add_parser('export',help='Export ontology')
     export_parser.add_argument('-s', '--strip-versions', action="store_true",
                                help='Remove versions from imports.')
+    export_parser.add_argument('-m', '--merge', action="store_true",
+                               help='Merge all inputs into a single output.')
     export_parser.add_argument('ontology', nargs="*", default=[],
                                help="Ontology file")
     return parser
@@ -146,9 +148,12 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
 
     args = configureArgParser().parse_args()
+    g = None
+    merge = 'merge' in args and args.merge
 
     for onto_file in args.ontology:
-        g = Graph()
+        if g is None or not merge:
+            g = Graph()
         g.parse(onto_file, format=guess_format(onto_file))
         logging.debug(f'{onto_file} has {len(g)} triples')
 
@@ -191,7 +196,11 @@ def main():
 
         # Output
         of = 'pretty-xml' if args.output_format == 'xml' else args.output_format
-        print(g.serialize(format=of).decode('utf-8'))
+        if not merge:
+            print(g.serialize(format=of).decode('utf-8'))
+
+    if merge:
+        print(g.serialize(format=of).decode('utf-8'))        
 
 
 if __name__ == '__main__':
