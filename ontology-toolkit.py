@@ -6,6 +6,17 @@ from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
 from rdflib.util import guess_format
 
 
+class MergeAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        try:
+            iri = URIRef(values[0])
+        except Exception as e:
+            parser.error(f'Invalid merge ontology URI {values[0]}: {e}')
+        if not re.match(r'\d+(\.\d+){0,2}', values[1]):
+            parser.error(f'Invalid merge ontology version {values[1]}')
+        setattr(namespace, self.dest, [iri, values[1]])
+
+
 def configureArgParser():
     parser = argparse.ArgumentParser(description='Ontology toolkit.')
     parser.add_argument('-o', '--output-format', action='store',
@@ -32,8 +43,10 @@ def configureArgParser():
     export_parser = subparsers.add_parser('export',help='Export ontology')
     export_parser.add_argument('-s', '--strip-versions', action="store_true",
                                help='Remove versions from imports.')
-    export_parser.add_argument('-m', '--merge', action="store_true",
-                               help='Merge all inputs into a single output.')
+    export_parser.add_argument('-m', '--merge', action=MergeAction, nargs=2,
+                               metavar=('IRI','VERSION'),
+                               help='Merge all inputs into a single ontology'
+                               ' with the given IRI and version')
     export_parser.add_argument('ontology', nargs="*", default=[],
                                help="Ontology file")
     return parser
@@ -132,16 +145,41 @@ def updateDependencyVersions(g, ontology, versions):
             logging.info(f'Added dependency for {newVersionURI}')
 
 
-def stripVersions(g, ontology):
+def stripVersions(g, ontology=None):
     # Gather current dependencies
-    currentDeps = g.objects(ontology, OWL.imports)
-    pattern = re.compile('^(.*)(\d+\.\d+\.\d+)?')
-    for d in currentDeps:
-        match = pattern.match(str(d))
-        if match.group(2):
-            logging.debug(f'Removing version for {d}')
-            g.remove((ontology, OWL.imports, d))
-            g.add((ontology, OWL.imports, URIRef(match.group(1))))
+    ontologies = [ontology] if ontology else list(g.subjects(RDF.type, OWL.Ontology))
+    for o in ontologies:
+        currentDeps = g.objects(o, OWL.imports)
+        pattern = re.compile('^(.*?)((\d+|[Xx])\.(\d+|[Xx])\.(\d+|[Xx]))?$')
+        for d in currentDeps:
+            match = pattern.match(str(d))
+            if match.group(2):
+                logging.debug(f'Removing version for {d}')
+                g.remove((o, OWL.imports, d))
+                g.add((o, OWL.imports, URIRef(match.group(1))))
+
+
+def versionSensitiveMatch(reference, ontologies):
+    match = re.match(r'^(.*?)((\d+|[Xx])\.(\d+|[Xx])\.(\d+|[Xx]))?$',
+                     str(reference))
+    refWithoutVersion = match.group(1)
+    return URIRef(refWithoutVersion) in ontologies
+
+
+def cleanMergeArtifacts(g, iri, version):
+    ontologies = set(g.subjects(RDF.type, OWL.Ontology))
+    externalImports = list(
+            i for i in g.objects(subject=None, predicate=OWL.imports)
+            if not versionSensitiveMatch(i, ontologies))
+    for o in ontologies:
+        for t in list(g.triples((o, None, None))):
+            g.remove(t)
+    g.add((iri, RDF.type, OWL.Ontology))
+    g.add((iri, OWL.ontologyIRI, iri))
+    g.add((iri, OWL.versionIRI, URIRef(str(iri) + version)))
+    g.add((iri, OWL.versionInfo, Literal("Created by merge tool.", datatype=XSD.string)))
+    for i in externalImports:
+        g.add((iri, OWL.imports, i))
 
 
 def main():
@@ -149,58 +187,66 @@ def main():
 
     args = configureArgParser().parse_args()
     g = None
-    merge = 'merge' in args and args.merge
 
-    for onto_file in args.ontology:
-        if g is None or not merge:
-            g = Graph()
-        g.parse(onto_file, format=guess_format(onto_file))
-        logging.debug(f'{onto_file} has {len(g)} triples')
+    of = 'pretty-xml' if args.output_format == 'xml' else args.output_format
 
-        # locate ontology
-        ontology = findSingleOntology(g, onto_file)
-        if not ontology:
-            continue
+    if 'merge' in args and args.merge:
+        g = Graph()
+        for onto_file in args.ontology:
+            g.parse(onto_file, format=guess_format(onto_file))
+            logging.debug(f'{onto_file} has {len(g)} triples')
+    
+            # Remove dep versions
+            if 'strip_versions' in args and args.strip_versions:
+                stripVersions(g)
 
-        ontologyIRI = next(g.objects(ontology, OWL.ontologyIRI), None)
-        if ontologyIRI:
-            logging.debug(f'{ontologyIRI} found for {ontology}')
-        else:
-            ontologyIRI = ontology
-
-        # Set version
-        if 'set_version' in args:
-            setVersion(g, ontology, ontologyIRI, args.set_version)
-        if 'version_info' in args:
-            versionInfo = args.version_info
-            if versionInfo == 'auto':
-                # Not specified, generate automatically
-                versionInfo = None
-            try:
-                setVersionInfo(g, ontology, versionInfo)
-            except Exception as e:
-                logging.error(e)
-                continue
-
-        # Add rdfs:isDefinedBy
-        if 'defined_by' in args and args.defined_by:
-            addDefinedBy(g, ontologyIRI)
-
-        # Update dep versions
-        if 'dependency_version' in args and len(args.dependency_version):
-            updateDependencyVersions(g, ontology, args.dependency_version)
-
-        # Remove dep versions
-        if 'strip_versions' in args and args.strip_versions:
-            stripVersions(g, ontology)
-
-        # Output
-        of = 'pretty-xml' if args.output_format == 'xml' else args.output_format
-        if not merge:
-            print(g.serialize(format=of).decode('utf-8'))
-
-    if merge:
+        cleanMergeArtifacts(g, URIRef(args.merge[0]), args.merge[1])
         print(g.serialize(format=of).decode('utf-8'))        
+    else:
+        for onto_file in args.ontology:
+            g = Graph()
+            g.parse(onto_file, format=guess_format(onto_file))
+            logging.debug(f'{onto_file} has {len(g)} triples')
+    
+            # locate ontology
+            ontology = findSingleOntology(g, onto_file)
+            if not ontology:
+                continue
+    
+            ontologyIRI = next(g.objects(ontology, OWL.ontologyIRI), None)
+            if ontologyIRI:
+                logging.debug(f'{ontologyIRI} found for {ontology}')
+            else:
+                ontologyIRI = ontology
+    
+            # Set version
+            if 'set_version' in args:
+                setVersion(g, ontology, ontologyIRI, args.set_version)
+            if 'version_info' in args:
+                versionInfo = args.version_info
+                if versionInfo == 'auto':
+                    # Not specified, generate automatically
+                    versionInfo = None
+                try:
+                    setVersionInfo(g, ontology, versionInfo)
+                except Exception as e:
+                    logging.error(e)
+                    continue
+    
+            # Add rdfs:isDefinedBy
+            if 'defined_by' in args and args.defined_by:
+                addDefinedBy(g, ontologyIRI)
+    
+            # Update dep versions
+            if 'dependency_version' in args and len(args.dependency_version):
+                updateDependencyVersions(g, ontology, args.dependency_version)
+    
+            # Remove dep versions
+            if 'strip_versions' in args and args.strip_versions:
+                stripVersions(g, ontology)
+    
+            # Output
+            print(g.serialize(format=of).decode('utf-8'))
 
 
 if __name__ == '__main__':
