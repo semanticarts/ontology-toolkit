@@ -19,7 +19,7 @@ optional arguments:
                         Output format
 ```
 
-The `update` module modified ontology version and dependency information
+The `update` module modifies ontology version and dependency information
 ```
 $ python ontology-toolkit.py update -h
 usage: ontology-toolkit.py update [-h] [-b] [-v SET_VERSION]
@@ -50,5 +50,8 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
+  -m IRI VERSION, --merge IRI VERSION
+                        Merge all inputs into a single ontology with the given
+                        IRI and version
   -s, --strip-versions  Remove versions from imports.
 ```
