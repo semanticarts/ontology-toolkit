@@ -1,6 +1,11 @@
 import logging
 import argparse
+import os
+from os.path import dirname, join, isdir, isfile, basename, splitext
+from glob import glob
 import re
+import subprocess
+import shutil
 from rdflib import Graph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
 from rdflib.util import guess_format
@@ -23,7 +28,7 @@ def configureArgParser():
                         default='turtle',
                         choices=['xml','turtle','n3'],
                         help='Output format')
-    subparsers = parser.add_subparsers(help='sub-command help')
+    subparsers = parser.add_subparsers(help='sub-command help', dest='command')
 
     update_parser = subparsers.add_parser('update',help='Update versions and dependencies')
     update_parser.add_argument('-b', '--defined-by', action="store_true",
@@ -49,6 +54,24 @@ def configureArgParser():
                                ' with the given IRI and version')
     export_parser.add_argument('ontology', nargs="*", default=[],
                                help="Ontology file")
+
+    bundle_parser = subparsers.add_parser('bundle', help='Bundle ontology for release')
+    bundle_parser.add_argument('-t', '--tools', action="store",
+                               help="Location of serializer tool")
+    bundle_parser.add_argument('-a', '--artifacts', action="store",
+                               help="Location of release artifacts "
+                               "(release notes, license, etc), defaults to "
+                               "current working directory",
+                               default = os.getcwd())
+    bundle_parser.add_argument('-c', '--catalog', action="store",
+                               help="Location of Protege catalog, defaults to "
+                               "OntologyFiles/bundle-catalog-v001.xml in the "
+                               "artifacts directory")
+    bundle_parser.add_argument('-o', '--output', action="store",
+                               help="Output directory for transformed ontology files")
+    bundle_parser.add_argument('version', help="Version string to replace X.x.x template")
+    bundle_parser.add_argument('ontology', nargs="*", default=[],
+                               help="Ontology file, directory or name pattern")
     return parser
 
 
@@ -182,6 +205,80 @@ def cleanMergeArtifacts(g, iri, version):
         g.add((iri, OWL.imports, i))
 
 
+def expandFileRef(path):
+    if isfile(path):
+        return [path]
+    elif isdir(path):
+        return glob(join(path,'*.owl'))
+    else:
+        return glob(path)
+
+
+def serializeToOutputDir(tools, output, version, file):
+    base, ext = splitext(basename(file))
+    outputFile = join(output, f"{base}{version}{ext}")
+    logging.debug(f"Serializing {file} to {output}")
+    serializeArgs = [
+            "java",
+            "-jar", join(tools,"rdf-toolkit.jar"),
+            "-tfmt", "rdf-xml",
+            "-sdt", "explicit",
+            "-dtd",
+            "-ibn",
+            "-s", file,
+            "-t", outputFile]
+    subprocess.run(serializeArgs)
+    return outputFile
+
+
+def updateVersion(file, version):
+    with open(file, 'r') as f:
+        replaced = f.read().replace('X.x.x', version)
+    with open(file, 'w') as f:
+        f.write(replaced)
+
+
+def copyIfPresent(fromLoc, toLoc):
+    if isfile(fromLoc):
+        shutil.copy(fromLoc, toLoc)
+
+
+def bundleOntology(args):
+    output = args.output if args.output else \
+        join(os.getcwd(), f"gist{args.version}_webDownload")
+    if not isdir(output):
+        os.mkdir(output)
+
+    if len(args.ontology) == 0:
+        specifiedFiles = [join(args.artifacts, 'OntologyFiles')]
+    else:
+        specifiedFiles = args.ontology
+    allFiles = [file for ref in specifiedFiles for file in expandFileRef(ref)]
+    for file in allFiles:
+        serialized = serializeToOutputDir(
+                args.tools if args.tools else join(args.artifacts, 'tools'), 
+                output, 
+                args.version, 
+                file)
+        updateVersion(serialized, args.version)
+
+    copyIfPresent(join(args.artifacts, 'LICENSE.txt'), output)
+    copyIfPresent(join(args.artifacts, 'ReleaseNotes.txt'), output)
+
+    catalog = args.catalog if args.catalog else \
+        join(args.artifacts, 'OntologyFiles', 'bundle-catalog-v001.xml')
+    if isfile(catalog):
+        copied = join(output, 'catalog-v001.xml')
+        shutil.copy(catalog, copied)
+        updateVersion(copied, args.version)
+
+    deprecated = join(output, 'Deprecated')
+    if not isdir(deprecated):
+        os.mkdir(deprecated)
+    for d in glob(join(output, '*Deprecated*')):
+        shutil.move(d, deprecated)
+
+
 def main():
     logging.basicConfig(level=logging.DEBUG)
 
@@ -190,35 +287,38 @@ def main():
 
     of = 'pretty-xml' if args.output_format == 'xml' else args.output_format
 
+    if args.command == 'bundle':
+        return bundleOntology(args)
+
     if 'merge' in args and args.merge:
         g = Graph()
         for onto_file in args.ontology:
             g.parse(onto_file, format=guess_format(onto_file))
             logging.debug(f'{onto_file} has {len(g)} triples')
-    
+
             # Remove dep versions
             if 'strip_versions' in args and args.strip_versions:
                 stripVersions(g)
 
         cleanMergeArtifacts(g, URIRef(args.merge[0]), args.merge[1])
-        print(g.serialize(format=of).decode('utf-8'))        
+        print(g.serialize(format=of).decode('utf-8'))
     else:
         for onto_file in args.ontology:
             g = Graph()
             g.parse(onto_file, format=guess_format(onto_file))
             logging.debug(f'{onto_file} has {len(g)} triples')
-    
+
             # locate ontology
             ontology = findSingleOntology(g, onto_file)
             if not ontology:
                 continue
-    
+
             ontologyIRI = next(g.objects(ontology, OWL.ontologyIRI), None)
             if ontologyIRI:
                 logging.debug(f'{ontologyIRI} found for {ontology}')
             else:
                 ontologyIRI = ontology
-    
+
             # Set version
             if 'set_version' in args:
                 setVersion(g, ontology, ontologyIRI, args.set_version)
@@ -232,19 +332,19 @@ def main():
                 except Exception as e:
                     logging.error(e)
                     continue
-    
+
             # Add rdfs:isDefinedBy
             if 'defined_by' in args and args.defined_by:
                 addDefinedBy(g, ontologyIRI)
-    
+
             # Update dep versions
             if 'dependency_version' in args and len(args.dependency_version):
                 updateDependencyVersions(g, ontology, args.dependency_version)
-    
+
             # Remove dep versions
             if 'strip_versions' in args and args.strip_versions:
                 stripVersions(g, ontology)
-    
+
             # Output
             print(g.serialize(format=of).decode('utf-8'))
 

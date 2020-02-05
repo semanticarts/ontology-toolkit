@@ -12,6 +12,7 @@ positional arguments:
   {update,export}       sub-command help
     update              Update versions and dependencies
     export              Export ontology
+    bundle              Bundle ontology for release
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -55,3 +56,29 @@ optional arguments:
                         IRI and version
   -s, --strip-versions  Remove versions from imports.
 ```
+
+The bundle module is a replacement for the `bundle.bat` script used to version and package [gist](https://github.com/semanticarts/gist)
+```
+usage: ontology-toolkit.py bundle [-h] [-t TOOLS] [-a ARTIFACTS] [-c CATALOG]
+                                  [-o OUTPUT]
+                                  version [ontology [ontology ...]]
+
+positional arguments:
+  version               Version string to replace X.x.x template
+  ontology              Ontology file, directory or name pattern
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -t TOOLS, --tools TOOLS
+                        Location of serializer tool
+  -a ARTIFACTS, --artifacts ARTIFACTS
+                        Location of release artifacts (release notes, license,
+                        etc), defaults to current working directory
+  -c CATALOG, --catalog CATALOG
+                        Location of Protege catalog, defaults to
+                        OntologyFiles/bundle-catalog-v001.xml in the artifacts
+                        directory
+  -o OUTPUT, --output OUTPUT
+                        Output directory for transformed ontology files
+```
+Defaults are set up such that running `python ontology-toolkit.py bundle <version>` from the `gist` root directory requires no further options
