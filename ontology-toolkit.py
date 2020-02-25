@@ -1,7 +1,7 @@
 import logging
 import argparse
 import os
-from os.path import dirname, join, isdir, isfile, basename, splitext
+from os.path import join, isdir, isfile, basename, splitext
 from glob import glob
 import re
 import subprocess
@@ -9,6 +9,7 @@ import shutil
 from rdflib import Graph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
 from rdflib.util import guess_format
+from ontograph import OntoGraf
 
 
 class MergeAction(argparse.Action):
@@ -24,7 +25,7 @@ class MergeAction(argparse.Action):
 
 def configureArgParser():
     parser = argparse.ArgumentParser(description='Ontology toolkit.')
-    parser.add_argument('-o', '--output-format', action='store',
+    parser.add_argument('--output-format', action='store',
                         default='turtle',
                         choices=['xml','turtle','n3'],
                         help='Output format')
@@ -72,6 +73,15 @@ def configureArgParser():
     bundle_parser.add_argument('version', help="Version string to replace X.x.x template")
     bundle_parser.add_argument('ontology', nargs="*", default=[],
                                help="Ontology file, directory or name pattern")
+
+    graphic_parser = subparsers.add_parser('graphic',help='Create PNG graphic and dot file from OWL files')
+    graphic_parser.add_argument('-o', '--output', action="store",
+                                default = os.getcwd(),
+                                help="Output directory for generated graphics")
+    graphic_parser.add_argument('-v', '--version', help="Version to place in graphic",
+                                action="store")
+    graphic_parser.add_argument('ontology', nargs="*", default=[],
+                                help="Ontology file, directory or name pattern")
     return parser
 
 
@@ -243,6 +253,13 @@ def copyIfPresent(fromLoc, toLoc):
         shutil.copy(fromLoc, toLoc)
 
 
+def generateGraphic(args):
+    allFiles = [file for ref in args.ontology for file in expandFileRef(ref)]
+    og = OntoGraf(allFiles, outpath=args.output, version=args.version)
+    og.gatherInfo()
+    og.createGraf()
+
+
 def bundleOntology(args):
     output = args.output if args.output else \
         join(os.getcwd(), f"gist{args.version}_webDownload")
@@ -256,9 +273,9 @@ def bundleOntology(args):
     allFiles = [file for ref in specifiedFiles for file in expandFileRef(ref)]
     for file in allFiles:
         serialized = serializeToOutputDir(
-                args.tools if args.tools else join(args.artifacts, 'tools'), 
-                output, 
-                args.version, 
+                args.tools if args.tools else join(args.artifacts, 'tools'),
+                output,
+                args.version,
                 file)
         updateVersion(serialized, args.version)
 
@@ -278,6 +295,14 @@ def bundleOntology(args):
     for d in glob(join(output, '*Deprecated*')):
         shutil.move(d, deprecated)
 
+    documentation = join(output, 'Documentation')
+    if not isdir(documentation):
+        os.mkdir(documentation)
+    og = OntoGraf([f for f in allFiles if not 'Deprecated' in f],
+                   outpath=documentation, version=args.version)
+    og.gatherInfo()
+    og.createGraf()
+
 
 def main():
     logging.basicConfig(level=logging.DEBUG)
@@ -289,6 +314,9 @@ def main():
 
     if args.command == 'bundle':
         return bundleOntology(args)
+
+    if args.command == 'graphic':
+        return generateGraphic(args)
 
     if 'merge' in args and args.merge:
         g = Graph()
