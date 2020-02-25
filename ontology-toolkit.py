@@ -5,6 +5,113 @@ from rdflib import Graph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
 from rdflib.util import guess_format
 
+import pydot
+import glob
+import os
+import datetime
+from pprint import pprint
+
+
+class OntoGraf():
+    """from describeGistOWLFiles.v2.py
+This is a small routine to describe a collection of Gist OWL files.
+It extracts the classes, object properties, data properties (if any), and Gist entities of subClass  "owl:Thing".
+It establishes the imports for each file, and then presents the results as a graphviz 'dot' file and a .png file.
+@version 2
+"""
+    def __init__(self):
+        self.queries = {}
+        self.queries["q_classes"] = """prefix : <http://example.com#>  construct {?x :hasClass ?y .} where {?x a owl:Ontology . ?y a owl:Class. FILTER (!isBlank(?y))}"""
+        self.queries["q_obj_properties"] = """prefix : <http://example.com#>  construct {?x :hasObjectProperty ?y .} where {?x a owl:Ontology . ?y a owl:ObjectProperty. }"""
+        self.queries["q_data_properties"] = """prefix : <http://example.com#>  construct {?x :hasDataProperty ?y .} where {?x a owl:Ontology . ?y a owl:DataProperty. }"""
+        self.queries["q_gist_things"] = """prefix : <http://example.com#>  construct {?x :hasGistThing ?y .} where {?x a owl:Ontology . ?y a owl:Thing.  FILTER ( strstarts(str(?y), "https://ontologies.semanticarts.com/gist/") )  }"""
+        self.queries["q_imports"] = """prefix : <http://example.com#>  construct {?x :imports ?z .} where {?x a owl:Ontology; owl:imports ?z }"""
+        self.title = "Gist Ontology : " + datetime.datetime.now().isoformat()
+        self.graf = pydot.Dot(graph_type='digraph', label=self.title, labelloc='t', rankdir="LR", ranksep="0.5", nodesep="1.25")
+        self.graf.set_node_defaults(**{'color': 'lightgray', 'style': 'unfilled', 'shape': 'record', 'fontname': 'Bitstream Vera Sans', 'fontsize': '10'})
+        self.filepath = r"./*.owl"
+        self.outpath = "."
+        self.outfilename = datetime.datetime.now().isoformat()[:10] + "graf_output"
+        self.outdot = os.path.join(self.outpath, self.outfilename + ".dot")
+        self.outpng = os.path.join(self.outpath, self.outfilename + ".png")
+        self.outdict = {}
+        self.arrowcolor = "darkorange2"
+        self.arrowhead = "vee"
+        
+
+    def gatherInfo(self):
+        self.outdict = {}
+        for i in glob.glob(self.filepath):
+            filename = os.path.basename(i)
+            print("-"*20,filename,"-"*20)
+            g = Graph()
+            g.parse(i, format=guess_format(i))
+            
+            classes = self.tidy_query_results(g.query(self.queries["q_classes"]))
+            obj_props = self.tidy_query_results(g.query(self.queries["q_obj_properties"]))
+            data_props = self.tidy_query_results(g.query(self.queries["q_data_properties"]))
+            gist_things = self.tidy_query_results(g.query(self.queries["q_gist_things"]))
+            imports = self.tidy_query_results(g.query(self.queries["q_imports"]))
+            
+            classesList = ''
+            obj_propertiesList = ''
+            data_propertiesList = ''
+            gist_thingsList = ''
+            ontologyName = ''
+            importsList = ''
+            
+            for z in classes:
+                ontologyName = z[0]
+                classesList += z[2] + "\l"
+            for z in obj_props:
+                ontologyName = z[0]
+                obj_propertiesList += z[2] + "\l"
+            for z in data_props:
+                ontologyName = z[0]
+                data_propertiesList += z[2] + "\l"
+            for z in gist_things:
+                ontologyName = z[0]
+                gist_thingsList += z[2] + "\l"
+            for z in imports:
+                ontologyName = z[0]
+                importsList += z[2] + "\l"
+                
+            self.outdict[filename]= {"ontologyName": ontologyName,
+                                     "classesList": classesList,
+                                     "obj_propertiesList" : obj_propertiesList,
+                                     "data_propertiesList" : data_propertiesList,
+                                     "gist_thingsList" : gist_thingsList,
+                                     "imports" :  imports
+                                    }
+        return self.outdict
+
+    def tidy_query_results(self, res):
+        arr = [(s.split("/")[-1].replace("gist",""),p.split("#")[-1],o.split("/")[-1].replace("gist","")) for s,p,o in res]
+        return arr        
+
+    def createGraf(self, dataDict=None):
+        if dataDict is None:
+            dataDict = self.outdict
+        for k in dataDict.keys():
+            if k != '':
+                ontologyName = dataDict[k]["ontologyName"]
+                classesList = dataDict[k]["classesList"]
+                obj_propertiesList = dataDict[k]["obj_propertiesList"]
+                data_propertiesList = dataDict[k]["data_propertiesList"]
+                gist_thingsList = dataDict[k]["gist_thingsList"]
+                imports  = dataDict[k]["imports"]
+                
+                node = pydot.Node(ontologyName, label= "{" + k + r"\l\l" + ontologyName + "|" + classesList + "|" + obj_propertiesList + "|" + data_propertiesList + "|" + gist_thingsList + "}")
+                self.graf.add_node(node)
+
+                for x in imports:
+                    edge = pydot.Edge(x[0],x[2][:-5], color=self.arrowcolor, arrowhead=self.arrowhead)
+                    self.graf.add_edge(edge)
+        self.graf.write(self.outdot)
+        self.graf.write_png(self.outpng)
+        print("Plots saved")
+
+
 
 class MergeAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
@@ -23,6 +130,7 @@ def configureArgParser():
                         default='turtle',
                         choices=['xml','turtle','n3'],
                         help='Output format')
+    
     subparsers = parser.add_subparsers(help='sub-command help')
 
     update_parser = subparsers.add_parser('update',help='Update versions and dependencies')
@@ -49,6 +157,14 @@ def configureArgParser():
                                ' with the given IRI and version')
     export_parser.add_argument('ontology', nargs="*", default=[],
                                help="Ontology file")
+
+    graphic_parser = subparsers.add_parser('graphic',help='Create PNG graphic and dot file from OWL files in folder')
+    graphic_parser.add_argument('-f', '--from_folder', action="store", help="folder and file pattern (e.g. .\*.owl) for OWL files ")
+    graphic_parser.add_argument('-t', '--to_folder', action="store", help="folder where graphic and dot files will be saved")
+    
+    
+
+    
     return parser
 
 
@@ -201,7 +317,17 @@ def main():
                 stripVersions(g)
 
         cleanMergeArtifacts(g, URIRef(args.merge[0]), args.merge[1])
-        print(g.serialize(format=of).decode('utf-8'))        
+        print(g.serialize(format=of).decode('utf-8'))
+        
+    elif 'from_folder' in args:
+        graf = OntoGraf()
+        graf.filepath = args.from_folder
+        graf.outpath = args.to_folder
+        graf.gatherInfo()
+        graf.createGraf()
+        print(graf.outdot + " and " + graf.outpng + "written to " + graf.outpath)
+        
+        
     else:
         for onto_file in args.ontology:
             g = Graph()
