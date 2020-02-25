@@ -320,9 +320,9 @@ def main():
                 ontologyIRI = ontology
 
             # Set version
-            if 'set_version' in args:
+            if 'set_version' in args and args.set_version:
                 setVersion(g, ontology, ontologyIRI, args.set_version)
-            if 'version_info' in args:
+            if 'version_info' in args and args.version_info:
                 versionInfo = args.version_info
                 if versionInfo == 'auto':
                     # Not specified, generate automatically
