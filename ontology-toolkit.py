@@ -19,7 +19,7 @@ It extracts the classes, object properties, data properties (if any), and Gist e
 It establishes the imports for each file, and then presents the results as a graphviz 'dot' file and a .png file.
 @version 2
 """
-    def __init__(self):
+    def __init__(self, wee=False):
         self.queries = {}
         self.queries["q_classes"] = """prefix : <http://example.com#>  construct {?x :hasClass ?y .} where {?x a owl:Ontology . ?y a owl:Class. FILTER (!isBlank(?y))}"""
         self.queries["q_obj_properties"] = """prefix : <http://example.com#>  construct {?x :hasObjectProperty ?y .} where {?x a owl:Ontology . ?y a owl:ObjectProperty. }"""
@@ -27,7 +27,10 @@ It establishes the imports for each file, and then presents the results as a gra
         self.queries["q_gist_things"] = """prefix : <http://example.com#>  construct {?x :hasGistThing ?y .} where {?x a owl:Ontology . ?y a owl:Thing.  FILTER ( strstarts(str(?y), "https://ontologies.semanticarts.com/gist/") )  }"""
         self.queries["q_imports"] = """prefix : <http://example.com#>  construct {?x :imports ?z .} where {?x a owl:Ontology; owl:imports ?z }"""
         self.title = "Gist Ontology : " + datetime.datetime.now().isoformat()
-        self.graf = pydot.Dot(graph_type='digraph', label=self.title, labelloc='t', rankdir="LR", ranksep="0.5", nodesep="1.25")
+        if wee:
+            self.graf = pydot.Dot(graph_type='digraph', label=self.title, labelloc='t', rankdir="TB")
+        else:
+            self.graf = pydot.Dot(graph_type='digraph', label=self.title, labelloc='t', rankdir="LR", ranksep="0.5", nodesep="1.25")
         self.graf.set_node_defaults(**{'color': 'lightgray', 'style': 'unfilled', 'shape': 'record', 'fontname': 'Bitstream Vera Sans', 'fontsize': '10'})
         self.filepath = r"./*.owl"
         self.outpath = "."
@@ -89,7 +92,7 @@ It establishes the imports for each file, and then presents the results as a gra
         arr = [(s.split("/")[-1].replace("gist",""),p.split("#")[-1],o.split("/")[-1].replace("gist","")) for s,p,o in res]
         return arr        
 
-    def createGraf(self, dataDict=None):
+    def createGraf(self, dataDict=None, wee=False):
         if dataDict is None:
             dataDict = self.outdict
         for k in dataDict.keys():
@@ -99,11 +102,13 @@ It establishes the imports for each file, and then presents the results as a gra
                 obj_propertiesList = dataDict[k]["obj_propertiesList"]
                 data_propertiesList = dataDict[k]["data_propertiesList"]
                 gist_thingsList = dataDict[k]["gist_thingsList"]
-                imports  = dataDict[k]["imports"]
                 
-                node = pydot.Node(ontologyName, label= "{" + k + r"\l\l" + ontologyName + "|" + classesList + "|" + obj_propertiesList + "|" + data_propertiesList + "|" + gist_thingsList + "}")
+                if wee:
+                    node = pydot.Node(ontologyName)
+                else:
+                    node = pydot.Node(ontologyName, label= "{" + k + r"\l\l" + ontologyName + "|" + classesList + "|" + obj_propertiesList + "|" + data_propertiesList + "|" + gist_thingsList + "}")
                 self.graf.add_node(node)
-
+                imports  = dataDict[k]["imports"]
                 for x in imports:
                     edge = pydot.Edge(x[0],x[2][:-5], color=self.arrowcolor, arrowhead=self.arrowhead)
                     self.graf.add_edge(edge)
@@ -161,6 +166,7 @@ def configureArgParser():
     graphic_parser = subparsers.add_parser('graphic',help='Create PNG graphic and dot file from OWL files in folder')
     graphic_parser.add_argument('-f', '--from_folder', action="store", help="folder and file pattern (e.g. .\*.owl) for OWL files ")
     graphic_parser.add_argument('-t', '--to_folder', action="store", help="folder where graphic and dot files will be saved")
+    graphic_parser.add_argument('-w', '--wee_pic', action="store", help="a version of the graphic with only core information about ontology and imports")
     
     
 
@@ -320,11 +326,19 @@ def main():
         print(g.serialize(format=of).decode('utf-8'))
         
     elif 'from_folder' in args:
-        graf = OntoGraf()
-        graf.filepath = args.from_folder
-        graf.outpath = args.to_folder
-        graf.gatherInfo()
-        graf.createGraf()
+
+        if "wee_pic":
+            graf = OntoGraf(wee=True)
+            graf.filepath = args.from_folder
+            graf.outpath = args.to_folder
+            graf.gatherInfo()
+            graf.createGraf(wee=True)
+        else:
+            graf = OntoGraf()
+            graf.filepath = args.from_folder
+            graf.outpath = args.to_folder
+            graf.gatherInfo()                 
+            graf.createGraf()
         print(graf.outdot + " and " + graf.outpng + "written to " + graf.outpath)
         
         
