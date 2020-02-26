@@ -18,7 +18,7 @@ It establishes the imports for each file, and then presents the results as a gra
 class OntoGraf():
     def __init__(self, files, outpath='.', title='Gist', version=None):
         if not version:
-            version = datetime.datetime.now().isoformat()
+            version = datetime.datetime.now().isoformat()[:10]
         self.title = f'{title} Ontology: {version}'
 
         self.graf = pydot.Dot(
@@ -45,7 +45,7 @@ class OntoGraf():
         self.arrowhead = "vee"
 
     def strip_uri(self, uri):
-        return re.sub(r'^.*[/#](gist)?(.*?)(X.x.x)?$', '\\2', str(uri))
+        return re.sub(r'^.*[/#](gist)?(.*?)(X.x.x|\d+.\d+.\d+)?$', '\\2', str(uri))
 
     def gatherInfo(self):
         self.outdict = {}
