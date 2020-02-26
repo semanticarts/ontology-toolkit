@@ -26,8 +26,8 @@ It establishes the imports for each file, and then presents the results as a gra
         self.queries["q_data_properties"] = """prefix : <http://example.com#>  construct {?x :hasDataProperty ?y .} where {?x a owl:Ontology . ?y a owl:DataProperty. }"""
         self.queries["q_gist_things"] = """prefix : <http://example.com#>  construct {?x :hasGistThing ?y .} where {?x a owl:Ontology . ?y a owl:Thing.  FILTER ( strstarts(str(?y), "https://ontologies.semanticarts.com/gist/") )  }"""
         self.queries["q_imports"] = """prefix : <http://example.com#>  construct {?x :imports ?z .} where {?x a owl:Ontology; owl:imports ?z }"""
-        self.title = "Gist Ontology : " + datetime.datetime.now().isoformat()
-        if wee:
+        self.title = "Ontology Plot : " + datetime.datetime.now().isoformat()
+        if wee == True:
             self.graf = pydot.Dot(graph_type='digraph', label=self.title, labelloc='t', rankdir="TB")
         else:
             self.graf = pydot.Dot(graph_type='digraph', label=self.title, labelloc='t', rankdir="LR", ranksep="0.5", nodesep="1.25")
@@ -110,7 +110,11 @@ It establishes the imports for each file, and then presents the results as a gra
                 self.graf.add_node(node)
                 imports  = dataDict[k]["imports"]
                 for x in imports:
-                    edge = pydot.Edge(x[0],x[2][:-5], color=self.arrowcolor, arrowhead=self.arrowhead)
+                    #fudge to overcome the version numbers (e.g. 9.0.0) added to Gist ontology imports
+                    if re.search("\d.\d.\d", x[2]):
+                        edge = pydot.Edge(x[0],x[2][:-5], color=self.arrowcolor, arrowhead=self.arrowhead)
+                    else:
+                        edge = pydot.Edge(x[0],x[2], color=self.arrowcolor, arrowhead=self.arrowhead)
                     self.graf.add_edge(edge)
         self.graf.write(self.outdot)
         self.graf.write_png(self.outpng)
@@ -166,7 +170,7 @@ def configureArgParser():
     graphic_parser = subparsers.add_parser('graphic',help='Create PNG graphic and dot file from OWL files in folder')
     graphic_parser.add_argument('-f', '--from_folder', action="store", help="folder and file pattern (e.g. .\*.owl) for OWL files ")
     graphic_parser.add_argument('-t', '--to_folder', action="store", help="folder where graphic and dot files will be saved")
-    graphic_parser.add_argument('-w', '--wee_pic', action="store", help="a version of the graphic with only core information about ontology and imports")
+    graphic_parser.add_argument('-w', '--wee', action="store_true", help="a version of the graphic with only core information about ontology and imports")
     
     
 
@@ -325,20 +329,21 @@ def main():
         cleanMergeArtifacts(g, URIRef(args.merge[0]), args.merge[1])
         print(g.serialize(format=of).decode('utf-8'))
         
-    elif 'from_folder' in args:
-
-        if "wee_pic":
+    elif 'from_folder' in args and args.from_folder:
+        if args.wee:
+            print("here")
             graf = OntoGraf(wee=True)
             graf.filepath = args.from_folder
             graf.outpath = args.to_folder
             graf.gatherInfo()
             graf.createGraf(wee=True)
         else:
-            graf = OntoGraf()
+            print("somewhere else")
+            graf = OntoGraf(wee=False)
             graf.filepath = args.from_folder
             graf.outpath = args.to_folder
             graf.gatherInfo()                 
-            graf.createGraf()
+            graf.createGraf(wee=False)
         print(graf.outdot + " and " + graf.outpng + "written to " + graf.outpath)
         
         

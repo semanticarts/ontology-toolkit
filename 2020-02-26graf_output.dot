@@ -1,0 +1,18 @@
+digraph G {
+label="Ontology Plot : 2020-02-26T09:45:15.637255";
+labelloc=t;
+nodesep="1.25";
+rankdir=LR;
+ranksep="0.5";
+node [color=lightgray, fontname="Bitstream Vera Sans", fontsize=10, shape=record, style=unfilled];
+ibbAllTBox [label="{ibbAllTBox.ttl\l\libbAllTBox||||}"];
+ibbAllTBox -> ibbMain  [arrowhead=vee, color=darkorange2];
+ibbAllTBox -> ibbTaxo  [arrowhead=vee, color=darkorange2];
+ibbGeneric [label="{ibbGeneric.ttl\l\libbGeneric||producedBy\l||}"];
+ibbGeneric -> core  [arrowhead=vee, color=darkorange2];
+ibbGeneric -> Core  [arrowhead=vee, color=darkorange2];
+ibbMain [label="{ibbMain.ttl\l\libbMain|IndustryGroup\lMarketArea\lOrganizationType\lIbbBrand\lIndustry\lIndustrySubSector\lProductOrServiceCategory\lIndustrySuperSector\lIndustrySector\l|directlyProducedBy\ldirectlyCompetesIn\lhasTopParent\lcompetesIn\lisBrandCompetitorIn\lhasBrandCompetitor\lhasImmediateParent\l||}"];
+ibbMain -> ibbGeneric  [arrowhead=vee, color=darkorange2];
+ibbTaxo [label="{ibbTaxo.ttl\l\libbTaxo||||}"];
+ibbTaxo -> ibbMain  [arrowhead=vee, color=darkorange2];
+}
