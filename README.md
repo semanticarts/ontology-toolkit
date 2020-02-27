@@ -82,3 +82,23 @@ optional arguments:
                         Output directory for transformed ontology files
 ```
 Defaults are set up such that running `python ontology-toolkit.py bundle <version>` from the `gist` root directory requires no further options
+
+The graphic module will create either a comprehensive diagram showing ontology modules together with classes, object properties and "Things" together with the path of imports, or (if the 'wee' option is selected) a simple diagram of ontology modules and the import hierarchy.  Graphics are exported both as ```png``` files and also as a ```dot``` file.  This ```dot``` file can be used with Graphviz or with web tools such as [Model Viewer](http://www.semantechs.co.uk/model-viewer)
+
+```
+python .\ontology-toolkit.py graphic -h
+usage: ontology-toolkit.py graphic [-h] [-o OUTPUT] [-v VERSION] [-w]
+                                   [ontology [ontology ...]]
+
+positional arguments:
+  ontology              Ontology file, directory or name pattern
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -o OUTPUT, --output OUTPUT
+                        Output directory for generated graphics
+  -v VERSION, --version VERSION
+                        Version to place in graphic
+  -w, --wee             a version of the graphic with only core information
+                        about ontology and imports
+```

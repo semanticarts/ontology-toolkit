@@ -80,6 +80,7 @@ def configureArgParser():
                                 help="Output directory for generated graphics")
     graphic_parser.add_argument('-v', '--version', help="Version to place in graphic",
                                 action="store")
+    graphic_parser.add_argument('-w', '--wee', action="store_true", help="a version of the graphic with only core information about ontology and imports")
     graphic_parser.add_argument('ontology', nargs="*", default=[],
                                 help="Ontology file, directory or name pattern")
     return parser
@@ -255,7 +256,8 @@ def copyIfPresent(fromLoc, toLoc):
 
 def generateGraphic(args):
     allFiles = [file for ref in args.ontology for file in expandFileRef(ref)]
-    og = OntoGraf(allFiles, outpath=args.output, version=args.version)
+    print(args.wee)
+    og = OntoGraf(allFiles, outpath=args.output, wee=args.wee, version=args.version)
     og.gatherInfo()
     og.createGraf()
 

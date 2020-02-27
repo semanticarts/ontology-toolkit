@@ -16,18 +16,24 @@ It establishes the imports for each file, and then presents the results as a gra
 """
 
 class OntoGraf():
-    def __init__(self, files, outpath='.', title='Gist', version=None):
+    def __init__(self, files, outpath='.', wee=False, title='Gist', version=None):
+        self.wee = wee
         if not version:
-            version = datetime.datetime.now().isoformat()
+            version = datetime.datetime.now().isoformat()[:10]
         self.title = f'{title} Ontology: {version}'
+        if wee == True:
+            self.graf = pydot.Dot(graph_type='digraph',
+                                  label=self.title,
+                                  labelloc='t',
+                                  rankdir="TB")
+        else:
+            self.graf = pydot.Dot(graph_type='digraph',
+                                  label=self.title,
+                                  labelloc='t',
+                                  rankdir="LR",
+                                  ranksep="0.5",
+                                  nodesep="1.25")
 
-        self.graf = pydot.Dot(
-                graph_type='digraph',
-                label=self.title,
-                labelloc='t',
-                rankdir="LR",
-                ranksep="0.5",
-                nodesep="1.25")
         self.graf.set_node_defaults(**{
                 'color': 'lightgray',
                 'style': 'unfilled',
@@ -45,7 +51,7 @@ class OntoGraf():
         self.arrowhead = "vee"
 
     def strip_uri(self, uri):
-        return re.sub(r'^.*[/#](gist)?(.*?)(X.x.x)?$', '\\2', str(uri))
+        return re.sub(r'^.*[/#](gist)?(.*?)(X.x.x|\d+.\d+.\d+)?$', '\\2', str(uri))
 
     def gatherInfo(self):
         self.outdict = {}
@@ -74,9 +80,11 @@ class OntoGraf():
             }
         return self.outdict
 
-    def createGraf(self, dataDict=None):
+    def createGraf(self, dataDict=None, wee=None):
         if dataDict is None:
             dataDict = self.outdict
+        if wee is None:
+            wee = self.wee
         for k in dataDict.keys():
             if k != '':
                 ontologyName = dataDict[k]["ontologyName"]
@@ -85,14 +93,19 @@ class OntoGraf():
                 data_propertiesList = dataDict[k]["data_propertiesList"]
                 gist_thingsList = dataDict[k]["gist_thingsList"]
                 imports  = dataDict[k]["imports"]
+                if wee:
+                    node = pydot.Node(ontologyName)
+                else:
+                    node = pydot.Node(ontologyName,
+                                      label= "{" + k + r"\l\l"
+                                      + ontologyName + "|"
+                                      + classesList + "|"
+                                      + obj_propertiesList
+                                      + "|"
+                                      + data_propertiesList
+                                      + "|"
+                                      + gist_thingsList + "}")
 
-                node = pydot.Node(ontologyName,
-                                  label= "{" + k + r"\l\l"
-                                  + ontologyName + "|"
-                                  + classesList + "|"
-                                  + obj_propertiesList + "|"
-                                  + data_propertiesList + "|"
-                                  + gist_thingsList + "}")
                 self.graf.add_node(node)
 
                 for i in imports:
