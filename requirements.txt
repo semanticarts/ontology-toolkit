@@ -1,0 +1,5 @@
+rdflib
+pydot
+jinja2
+markdown
+mdx_smartypants

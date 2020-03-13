@@ -10,6 +10,7 @@ from rdflib import Graph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
 from rdflib.util import guess_format
 from ontograph import OntoGraf
+import mdutils
 
 
 class MergeAction(argparse.Action):
@@ -282,7 +283,17 @@ def bundleOntology(args):
         updateVersion(serialized, args.version)
 
     copyIfPresent(join(args.artifacts, 'LICENSE.txt'), output)
-    copyIfPresent(join(args.artifacts, 'ReleaseNotes.txt'), output)
+    copyIfPresent(join(args.artifacts, 'ReleaseNotes.md'), output)
+    if isfile(join(args.artifacts, 'ReleaseNotes.md')):
+        conv = mdutils.md2html()
+        filepath_in = join(args.artifacts, 'ReleaseNotes.md')
+        filepath_out = join(args.artifacts, 'ReleaseNotes.html')
+        md = open(filepath_in).read()
+        converted_md = conv.md2html(md)
+        with open (filepath_out, 'w') as fd:
+            converted_md.seek (0)
+            shutil.copyfileobj (converted_md, fd, -1)
+
 
     catalog = args.catalog if args.catalog else \
         join(args.artifacts, 'OntologyFiles', 'bundle-catalog-v001.xml')
