@@ -3,6 +3,13 @@ import markdown
 import io
 import shutil
 
+'''
+mdutils.py
+the module provides functionality for converting markdown files to other formats.
+In the first instance this is to HTML5
+The class md2html() has a template that calls bootstrap for styling
+'''
+
 class md2html():
 
     def __init__(self):
@@ -36,6 +43,12 @@ class md2html():
 """
 
     def md2html(self,md):
+            '''
+    Parameters:
+    md (str): the markdown text that is to be converted to HTML5
+    Returns:
+    docfile (file object): a file object containing the HTML5
+    '''
         extensions = ['extra', 'smarty']
         html = markdown.markdown(md, extensions=extensions, output_format='html5')
         doc = jinja2.Template(self.TEMPLATE).render(content=html)
