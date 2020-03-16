@@ -43,12 +43,12 @@ class md2html():
 """
 
     def md2html(self,md):
-            '''
-    Parameters:
-    md (str): the markdown text that is to be converted to HTML5
-    Returns:
-    docfile (file object): a file object containing the HTML5
-    '''
+        '''
+        Parameters:
+        md (str): the markdown text that is to be converted to HTML5
+        Returns:
+        docfile (file object): a file object containing the HTML5
+        '''
         extensions = ['extra', 'smarty']
         html = markdown.markdown(md, extensions=extensions, output_format='html5')
         doc = jinja2.Template(self.TEMPLATE).render(content=html)
