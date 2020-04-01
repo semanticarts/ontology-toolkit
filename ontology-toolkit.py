@@ -283,11 +283,11 @@ def bundleOntology(args):
         updateVersion(serialized, args.version)
 
     copyIfPresent(join(args.artifacts, 'LICENSE.txt'), output)
-    copyIfPresent(join(args.artifacts, 'ReleaseNotes.md'), output)
-    if isfile(join(args.artifacts, 'ReleaseNotes.md')):
+    copyIfPresent(join(args.artifacts, 'doc', 'ReleaseNotes.md'), output)
+    if isfile(join(output, 'ReleaseNotes.md')):
         conv = mdutils.md2html()
-        filepath_in = join(args.artifacts, 'ReleaseNotes.md')
-        filepath_out = join(args.artifacts, 'ReleaseNotes.html')
+        filepath_in = join(output, 'ReleaseNotes.md')
+        filepath_out = join(output, 'ReleaseNotes.html')
         md = open(filepath_in).read()
         converted_md = conv.md2html(md)
         with open (filepath_out, 'w') as fd:
