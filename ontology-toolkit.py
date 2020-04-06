@@ -1,3 +1,4 @@
+"""Toolkit for ontology maintenance and release."""
 import logging
 import argparse
 import os
@@ -13,8 +14,11 @@ from ontograph import OntoGraf
 import mdutils
 
 
-class MergeAction(argparse.Action):
+class OntologyUriValidator(argparse.Action):
+    """Validates ontology IRI and version arguments."""
+
     def __call__(self, parser, namespace, values, option_string=None):
+        """First argument is a valid URI, 2nd a valid semantic version."""
         try:
             iri = URIRef(values[0])
         except Exception as e:
@@ -25,14 +29,16 @@ class MergeAction(argparse.Action):
 
 
 def configureArgParser():
+    """Configure command line parser."""
     parser = argparse.ArgumentParser(description='Ontology toolkit.')
     parser.add_argument('--output-format', action='store',
                         default='turtle',
-                        choices=['xml','turtle','n3'],
+                        choices=['xml', 'turtle', 'n3'],
                         help='Output format')
     subparsers = parser.add_subparsers(help='sub-command help', dest='command')
 
-    update_parser = subparsers.add_parser('update',help='Update versions and dependencies')
+    update_parser = subparsers.add_parser('update',
+                                          help='Update versions and dependencies')
     update_parser.add_argument('-b', '--defined-by', action="store_true",
                                help='Add rdfs:isDefinedBy to every resource defined.')
     update_parser.add_argument('-v', '--set-version', action="store",
@@ -40,18 +46,18 @@ def configureArgParser():
     update_parser.add_argument('-i', '--version-info', action="store",
                                nargs='?', const='auto',
                                help='Adjust versionInfo, defaults to "Version X.x.x')
-    update_parser.add_argument('-d','--dependency-version', action="append",
-                               metavar=('DEPENDENCY','VERSION'),
+    update_parser.add_argument('-d', '--dependency-version', action="append",
+                               metavar=('DEPENDENCY', 'VERSION'),
                                nargs=2, default=[],
                                help='Update the import of DEPENDENCY to VERSION')
     update_parser.add_argument('ontology', nargs="*", default=[],
                                help="Ontology file")
 
-    export_parser = subparsers.add_parser('export',help='Export ontology')
+    export_parser = subparsers.add_parser('export', help='Export ontology')
     export_parser.add_argument('-s', '--strip-versions', action="store_true",
                                help='Remove versions from imports.')
-    export_parser.add_argument('-m', '--merge', action=MergeAction, nargs=2,
-                               metavar=('IRI','VERSION'),
+    export_parser.add_argument('-m', '--merge', action=OntologyUriValidator, nargs=2,
+                               metavar=('IRI', 'VERSION'),
                                help='Merge all inputs into a single ontology'
                                ' with the given IRI and version')
     export_parser.add_argument('ontology', nargs="*", default=[],
@@ -64,7 +70,7 @@ def configureArgParser():
                                help="Location of release artifacts "
                                "(release notes, license, etc), defaults to "
                                "current working directory",
-                               default = os.getcwd())
+                               default=os.getcwd())
     bundle_parser.add_argument('-c', '--catalog', action="store",
                                help="Location of Protege catalog, defaults to "
                                "OntologyFiles/bundle-catalog-v001.xml in the "
@@ -75,19 +81,24 @@ def configureArgParser():
     bundle_parser.add_argument('ontology', nargs="*", default=[],
                                help="Ontology file, directory or name pattern")
 
-    graphic_parser = subparsers.add_parser('graphic',help='Create PNG graphic and dot file from OWL files')
+    graphic_parser = subparsers.add_parser('graphic',
+                                           help='Create PNG graphic and dot'
+                                           ' file from OWL files')
     graphic_parser.add_argument('-o', '--output', action="store",
-                                default = os.getcwd(),
+                                default=os.getcwd(),
                                 help="Output directory for generated graphics")
     graphic_parser.add_argument('-v', '--version', help="Version to place in graphic",
                                 action="store")
-    graphic_parser.add_argument('-w', '--wee', action="store_true", help="a version of the graphic with only core information about ontology and imports")
+    graphic_parser.add_argument('-w', '--wee', action="store_true",
+                                help="a version of the graphic with only core"
+                                " information about ontology and imports")
     graphic_parser.add_argument('ontology', nargs="*", default=[],
                                 help="Ontology file, directory or name pattern")
     return parser
 
 
 def findSingleOntology(g, onto_file):
+    """Verify that file has a single ontology defined and return the IRI."""
     ontologies = list(g.subjects(RDF.type, OWL.Ontology))
     if len(ontologies) == 0:
         logging.warning(f'No ontology definition found in {onto_file}')
@@ -102,6 +113,7 @@ def findSingleOntology(g, onto_file):
 
 
 def setVersion(g, ontology, ontologyIRI, version):
+    """Add or replace versionIRI for the specified ontology."""
     g.add((ontology, OWL.ontologyIRI, ontologyIRI))
     logging.debug(f'ontologyIRI {ontologyIRI} added for {ontology}')
 
@@ -116,7 +128,11 @@ def setVersion(g, ontology, ontologyIRI, version):
 
 
 def setVersionInfo(g, ontology, versionInfo):
-    pattern = re.compile('^(.*?)(\d+\.\d+\.\d+)?$')
+    """Add versionInfo for the ontology.
+
+    If versionInfo is not provided, extracts ontology version from versionIRI.
+    """
+    pattern = re.compile('^(.*?)(\\d+\\.\\d+\\.\\d+)?$')
     versionIRI = next(g.objects(ontology, OWL.versionIRI), None)
     version = pattern.match(str(versionIRI)).group(2) if versionIRI else None
     if not version and not versionInfo:
@@ -134,31 +150,41 @@ def setVersionInfo(g, ontology, versionInfo):
 
 
 def addDefinedBy(g, ontologyIRI):
-    definitions = g.query("""
-    SELECT distinct ?defined ?label ?defBy WHERE {
-      VALUES ?dtype { owl:Class owl:ObjectProperty owl:DatatypeProperty }
-      ?defined a ?dtype ; skos:prefLabel|rdfs:label ?label .
-      OPTIONAL { ?defined rdfs:isDefinedBy ?defBy }
-    }
-    """,
-    initNs={'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+    """Add rdfs:isDefinedBy to every entity declared by the ontology."""
+    definitions = g.query(
+        """
+        SELECT distinct ?defined ?label ?defBy WHERE {
+          VALUES ?dtype { owl:Class owl:ObjectProperty owl:DatatypeProperty }
+          ?defined a ?dtype ; skos:prefLabel|rdfs:label ?label .
+          OPTIONAL { ?defined rdfs:isDefinedBy ?defBy }
+        }
+        """,
+        initNs={'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
     for d in definitions:
         if d.defBy:
             if d.defBy == ontologyIRI:
                 logging.debug(f'{d.defined} already defined by {ontologyIRI}')
             else:
-                logging.warning(f'{d.defined} defined by {d.defBy} instead of {ontologyIRI}')
+                logging.warning(f'{d.defined} defined by {d.defBy}'
+                                f' instead of {ontologyIRI}')
         else:
             logging.debug(f'Added definedBy to {d.defined}')
             g.add((d.defined, RDFS.isDefinedBy, ontologyIRI))
 
 
 def updateDependencyVersions(g, ontology, versions):
+    """Update ontology dependency versions.
+
+    The versions dict maps ontology IRI to their versions.
+    Inspect the imports of the current ontology, and if they match
+    (ignoring version) any of the ontology provided in the argument,
+    update them to the new version.
+    """
     # Gather current dependencies
     currentDeps = g.objects(ontology, OWL.imports)
     for dv in versions:
         dep, ver = dv
-        pattern = re.compile(f'{dep}(\d+\.\d+\.\d+)?')
+        pattern = re.compile(f'{dep}(\\d+\\.\\d+\\.\\d+)?')
         match = next((c for c in currentDeps if pattern.search(str(c))), None)
         if match:
             # Updating current dependency
@@ -181,11 +207,12 @@ def updateDependencyVersions(g, ontology, versions):
 
 
 def stripVersions(g, ontology=None):
+    """Remove versions (numeric or X.x.x placeholder) from imports."""
     # Gather current dependencies
     ontologies = [ontology] if ontology else list(g.subjects(RDF.type, OWL.Ontology))
     for o in ontologies:
         currentDeps = g.objects(o, OWL.imports)
-        pattern = re.compile('^(.*?)((\d+|[Xx])\.(\d+|[Xx])\.(\d+|[Xx]))?$')
+        pattern = re.compile('^(.*?)((\\d+|[Xx])\\.(\\d+|[Xx])\\.(\\d+|[Xx]))?$')
         for d in currentDeps:
             match = pattern.match(str(d))
             if match.group(2):
@@ -195,6 +222,7 @@ def stripVersions(g, ontology=None):
 
 
 def versionSensitiveMatch(reference, ontologies):
+    """Check if reference is in ontologies, ignoring version."""
     match = re.match(r'^(.*?)((\d+|[Xx])\.(\d+|[Xx])\.(\d+|[Xx]))?$',
                      str(reference))
     refWithoutVersion = match.group(1)
@@ -202,6 +230,7 @@ def versionSensitiveMatch(reference, ontologies):
 
 
 def cleanMergeArtifacts(g, iri, version):
+    """Remove all existing ontology declaration, replace with new merged ontology."""
     ontologies = set(g.subjects(RDF.type, OWL.Ontology))
     externalImports = list(
             i for i in g.objects(subject=None, predicate=OWL.imports)
@@ -218,21 +247,27 @@ def cleanMergeArtifacts(g, iri, version):
 
 
 def expandFileRef(path):
+    """Expand file reference to a list of paths.
+
+    If a file is provided, return as is. If a directory, return all .owl
+    files in the directory, outherwise interpret path as a glob pattern.
+    """
     if isfile(path):
         return [path]
     elif isdir(path):
-        return glob(join(path,'*.owl'))
+        return glob(join(path, '*.owl'))
     else:
         return glob(path)
 
 
 def serializeToOutputDir(tools, output, version, file):
+    """Serialize ontology file using standard options."""
     base, ext = splitext(basename(file))
     outputFile = join(output, f"{base}{version}{ext}")
     logging.debug(f"Serializing {file} to {output}")
     serializeArgs = [
             "java",
-            "-jar", join(tools,"rdf-toolkit.jar"),
+            "-jar", join(tools, "rdf-toolkit.jar"),
             "-tfmt", "rdf-xml",
             "-sdt", "explicit",
             "-dtd",
@@ -244,6 +279,7 @@ def serializeToOutputDir(tools, output, version, file):
 
 
 def updateVersion(file, version):
+    """Substitute version placeholder for actual version in file."""
     with open(file, 'r') as f:
         replaced = f.read().replace('X.x.x', version)
     with open(file, 'w') as f:
@@ -251,19 +287,39 @@ def updateVersion(file, version):
 
 
 def copyIfPresent(fromLoc, toLoc):
+    """Copy file to new location if present."""
     if isfile(fromLoc):
         shutil.copy(fromLoc, toLoc)
 
 
-def generateGraphic(args):
-    allFiles = [file for ref in args.ontology for file in expandFileRef(ref)]
-    print(args.wee)
-    og = OntoGraf(allFiles, outpath=args.output, wee=args.wee, version=args.version)
+def generateGraphic(fileRefs, compact, output, version):
+    """
+    Generate ontology .dot and .png graphic.
+
+    Parameters
+    ----------
+    fileRefs : list(string)
+        List of paths or glob patterns from which to gather ontologies.
+    compact : boolean
+        If True, generate a compact ontology graph.
+    output : string
+        Path of directory where graph will be output.
+    version : string
+        Version to be used in graphic title.
+
+    Returns
+    -------
+    None.
+
+    """
+    allFiles = [file for ref in fileRefs for file in expandFileRef(ref)]
+    og = OntoGraf(allFiles, outpath=output, wee=compact, version=version)
     og.gatherInfo()
     og.createGraf()
 
 
 def bundleOntology(args):
+    """Bundle ontology and related artifacts for release."""
     output = args.output if args.output else \
         join(os.getcwd(), f"gist{args.version}_webDownload")
     if not isdir(output):
@@ -290,10 +346,9 @@ def bundleOntology(args):
         filepath_out = join(output, 'ReleaseNotes.html')
         md = open(filepath_in).read()
         converted_md = conv.md2html(md)
-        with open (filepath_out, 'w') as fd:
-            converted_md.seek (0)
-            shutil.copyfileobj (converted_md, fd, -1)
-
+        with open(filepath_out, 'w') as fd:
+            converted_md.seek(0)
+            shutil.copyfileobj(converted_md, fd, -1)
 
     catalog = args.catalog if args.catalog else \
         join(args.artifacts, 'OntologyFiles', 'bundle-catalog-v001.xml')
@@ -311,13 +366,14 @@ def bundleOntology(args):
     documentation = join(output, 'Documentation')
     if not isdir(documentation):
         os.mkdir(documentation)
-    og = OntoGraf([f for f in allFiles if not 'Deprecated' in f],
-                   outpath=documentation, version=args.version)
+    og = OntoGraf([f for f in allFiles if 'Deprecated' not in f],
+                  outpath=documentation, version=args.version)
     og.gatherInfo()
     og.createGraf()
 
 
 def main():
+    """Do the thing."""
     logging.basicConfig(level=logging.DEBUG)
 
     args = configureArgParser().parse_args()
@@ -329,7 +385,7 @@ def main():
         return bundleOntology(args)
 
     if args.command == 'graphic':
-        return generateGraphic(args)
+        return generateGraphic(args.ontology, args.wee, args.output, args.version)
 
     if 'merge' in args and args.merge:
         g = Graph()
