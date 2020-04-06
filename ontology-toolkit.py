@@ -7,6 +7,8 @@ from glob import glob
 import re
 import subprocess
 import shutil
+import json
+import yaml
 from rdflib import Graph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
 from rdflib.util import guess_format
@@ -64,22 +66,13 @@ def configureArgParser():
                                help="Ontology file")
 
     bundle_parser = subparsers.add_parser('bundle', help='Bundle ontology for release')
-    bundle_parser.add_argument('-t', '--tools', action="store",
-                               help="Location of serializer tool")
-    bundle_parser.add_argument('-a', '--artifacts', action="store",
-                               help="Location of release artifacts "
-                               "(release notes, license, etc), defaults to "
-                               "current working directory",
-                               default=os.getcwd())
-    bundle_parser.add_argument('-c', '--catalog', action="store",
-                               help="Location of Protege catalog, defaults to "
-                               "OntologyFiles/bundle-catalog-v001.xml in the "
-                               "artifacts directory")
-    bundle_parser.add_argument('-o', '--output', action="store",
-                               help="Output directory for transformed ontology files")
-    bundle_parser.add_argument('version', help="Version string to replace X.x.x template")
-    bundle_parser.add_argument('ontology', nargs="*", default=[],
-                               help="Ontology file, directory or name pattern")
+    bundle_parser.add_argument('-v', '--variable', action="append",
+                               dest='variables',
+                               metavar=('VARIABLE', 'VALUE'),
+                               nargs=2, default=[],
+                               help='Set value of VARIABLE to VALUE')
+    bundle_parser.add_argument('bundle', default='bundle.json',
+                               help="JSON or YAML bundle definition")
 
     graphic_parser = subparsers.add_parser('graphic',
                                            help='Create PNG graphic and dot'
@@ -278,10 +271,10 @@ def serializeToOutputDir(tools, output, version, file):
     return outputFile
 
 
-def updateVersion(file, version):
+def replaceStringInFile(file, from_string, to_string):
     """Substitute version placeholder for actual version in file."""
     with open(file, 'r') as f:
-        replaced = f.read().replace('X.x.x', version)
+        replaced = f.read().replace(from_string, to_string)
     with open(file, 'w') as f:
         f.write(replaced)
 
@@ -318,58 +311,150 @@ def generateGraphic(fileRefs, compact, output, version):
     og.createGraf()
 
 
-def bundleOntology(args):
-    """Bundle ontology and related artifacts for release."""
-    output = args.output if args.output else \
-        join(os.getcwd(), f"gist{args.version}_webDownload")
-    if not isdir(output):
-        os.mkdir(output)
+class VarDict(dict):
+    """Dict that performs variable substitution on values."""
 
-    if len(args.ontology) == 0:
-        specifiedFiles = [join(args.artifacts, 'OntologyFiles')]
+    def __init__(self, *args):
+        """Initialize."""
+        dict.__init__(self, args)
+
+    def __getitem__(self, k):
+        """Interpret raw value as template to be substituted with variables."""
+        template = dict.__getitem__(self, k)
+        return template.format(**self)
+
+
+def __bundle_file_list(action, variables):
+    if 'includes' in action:
+        # source and target are directories, apply glob
+        src_dir = action['source'].format(**variables)
+        tgt_dir = action['target'].format(**variables)
+        if not isdir(tgt_dir):
+            os.mkdir(tgt_dir)
+        for pattern in action['includes']:
+            for input_file in glob(os.path.join(src_dir, pattern)):
+                yield dict(inputFile=input_file,
+                           outputFile=os.path.join(tgt_dir, os.path.basename(input_file)))
     else:
-        specifiedFiles = args.ontology
-    allFiles = [file for ref in specifiedFiles for file in expandFileRef(ref)]
-    for file in allFiles:
-        serialized = serializeToOutputDir(
-                args.tools if args.tools else join(args.artifacts, 'tools'),
-                output,
-                args.version,
-                file)
-        updateVersion(serialized, args.version)
+        yield dict(inputFile=action['source'].format(**variables),
+                   outputFile=action['target'].format(**variables))
 
-    copyIfPresent(join(args.artifacts, 'LICENSE.txt'), output)
-    copyIfPresent(join(args.artifacts, 'doc', 'ReleaseNotes.md'), output)
-    if isfile(join(output, 'ReleaseNotes.md')):
-        conv = mdutils.md2html()
-        filepath_in = join(output, 'ReleaseNotes.md')
-        filepath_out = join(output, 'ReleaseNotes.html')
-        md = open(filepath_in).read()
-        converted_md = conv.md2html(md)
-        with open(filepath_out, 'w') as fd:
-            converted_md.seek(0)
-            shutil.copyfileobj(converted_md, fd, -1)
 
-    catalog = args.catalog if args.catalog else \
-        join(args.artifacts, 'OntologyFiles', 'bundle-catalog-v001.xml')
-    if isfile(catalog):
-        copied = join(output, 'catalog-v001.xml')
-        shutil.copy(catalog, copied)
-        updateVersion(copied, args.version)
+def __bundle_transform__(action, tools, variables):
+    logging.debug('Transform %s', action)
+    tool = next((t for t in tools if t['name'] == action['tool']), None)
+    if not tool:
+        raise Exception('Missing tool ', action['tool'])
+    if tool['type'] != 'Java':
+        raise Exception('Unsupported tool type ', tool['type'])
 
-    deprecated = join(output, 'Deprecated')
-    if not isdir(deprecated):
-        os.mkdir(deprecated)
-    for d in glob(join(output, '*Deprecated*')):
-        shutil.move(d, deprecated)
+    for in_out in __bundle_file_list(action, variables):
+        invocation_vars = VarDict()
+        invocation_vars.update(variables)
+        invocation_vars.update(in_out)
+        interpreted_args = ["java", "-jar", tool['jar'].format(**invocation_vars)] + [
+            arg.format(**invocation_vars) for arg in tool['arguments']]
+        logging.debug('Running %s', interpreted_args)
+        subprocess.run(interpreted_args)
+        if 'replace' in action:
+            replaceStringInFile(in_out['outputFile'],
+                                action['replace']['from'].format(**invocation_vars),
+                                action['replace']['to'].format(**invocation_vars))
 
-    documentation = join(output, 'Documentation')
+
+def __bundle_copy__(action, variables):
+    logging.debug('Copy %s', action)
+    for in_out in __bundle_file_list(action, variables):
+        if isfile(in_out['inputFile']):
+            shutil.copy(in_out['inputFile'], in_out['outputFile'])
+            if 'replace' in action:
+                replaceStringInFile(in_out['outputFile'],
+                                    action['replace']['from'].format(**variables),
+                                    action['replace']['to'].format(**variables))
+
+
+def __bundle_move__(action, variables):
+    logging.debug('Move %s', action)
+    for in_out in __bundle_file_list(action, variables):
+        if isfile(in_out['inputFile']):
+            shutil.move(in_out['inputFile'], in_out['outputFile'])
+            if 'replace' in action:
+                replaceStringInFile(in_out['outputFile'],
+                                    action['replace']['from'].format(**variables),
+                                    action['replace']['to'].format(**variables))
+
+
+def __bundle_markdown__(action, variables):
+    logging.debug('Markdown %s', action)
+    conv = mdutils.md2html()
+    filepath_in = action['source'].format(**variables)
+    filepath_out = action['target'].format(**variables)
+    md = open(filepath_in).read()
+    converted_md = conv.md2html(md)
+    with open(filepath_out, 'w') as fd:
+        converted_md.seek(0)
+        shutil.copyfileobj(converted_md, fd, -1)
+
+
+def __bundle_graph__(action, variables):
+    logging.debug('Graph %s', action)
+    documentation = action['target'].format(**variables)
+    version = action['version'].format(**variables)
+    title = action['title'].format(**variables)
     if not isdir(documentation):
         os.mkdir(documentation)
-    og = OntoGraf([f for f in allFiles if 'Deprecated' not in f],
-                  outpath=documentation, version=args.version)
+    og = OntoGraf([f['inputFile'] for f in __bundle_file_list(action, variables)],
+                  outpath=documentation, title=title, version=version)
     og.gatherInfo()
     og.createGraf()
+
+
+def bundleOntology(command_line_variables, bundle_path):
+    """
+    Bundle ontology and related artifacts for release.
+
+    Parameters
+    ----------
+    variables : list
+        list of variable values to substitute into the template.
+    bundle : string
+        Path to YAML or JSON bundle defintion.
+
+    Returns
+    -------
+    None.
+
+    """
+    extension = os.path.splitext(bundle_path)[1]
+    with open(bundle_path, 'r') as b_stream:
+        if extension == '.yaml':
+            bundle = yaml.safe_load(b_stream)
+        else:
+            # assume json regardless of extension
+            bundle = json.load(b_stream)
+
+    variables = VarDict()
+    variables.update(bundle['variables'])
+    variables.update(dict((n, v) for n, v in command_line_variables))
+    substituted = dict((k, variables[k]) for k in variables)
+
+    for action in bundle['actions']:
+        if action['action'] == 'transform':
+            __bundle_transform__(action, bundle['tools'], substituted)
+        elif action['action'] == 'mkdir':
+            path = action['directory'].format(**substituted)
+            if not isdir(path):
+                os.mkdir(path)
+        elif action['action'] == 'copy':
+            __bundle_copy__(action, substituted)
+        elif action['action'] == 'move':
+            __bundle_move__(action, substituted)
+        elif action['action'] == 'markdown':
+            __bundle_markdown__(action, substituted)
+        elif action['action'] == 'graph':
+            __bundle_graph__(action, substituted)
+        else:
+            raise Exception('Unknown action ' + action)
 
 
 def main():
@@ -382,7 +467,7 @@ def main():
     of = 'pretty-xml' if args.output_format == 'xml' else args.output_format
 
     if args.command == 'bundle':
-        return bundleOntology(args)
+        return bundleOntology(args.variables, args.bundle)
 
     if args.command == 'graphic':
         return generateGraphic(args.ontology, args.wee, args.output, args.version)
