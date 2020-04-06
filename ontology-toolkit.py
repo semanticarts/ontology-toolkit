@@ -403,8 +403,9 @@ def __bundle_graph__(action, variables):
     title = action['title'].format(**variables)
     if not isdir(documentation):
         os.mkdir(documentation)
+    compact = action['compact'] if 'compact' in action else False
     og = OntoGraf([f['inputFile'] for f in __bundle_file_list(action, variables)],
-                  outpath=documentation, title=title, version=version)
+                  outpath=documentation, wee=compact, title=title, version=version)
     og.gatherInfo()
     og.createGraf()
 
