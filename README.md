@@ -4,12 +4,13 @@ Maintain version and dependency info in RDF ontologies.
 
 ```
 $ python ontology-toolkit.py -h
-usage: ontology-toolkit.py [-h] [-o {xml,turtle,n3}] {update,export} ...
+usage: ontology-toolkit.py [-h] {update,export,bundle,graphic} ...
 
 Ontology toolkit.
 
 positional arguments:
-  {update,export}       sub-command help
+  {update,export,bundle,graphic}
+                        sub-command help
     update              Update versions and dependencies
     export              Export ontology
     bundle              Bundle ontology for release
@@ -17,8 +18,6 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  -o {xml,turtle,n3}, --output-format {xml,turtle,n3}
-                        Output format
 ```
 
 The `update` sub-command modifies ontology version and dependency information
@@ -29,7 +28,7 @@ usage: ontology-toolkit.py update [-h] [-b] [-v SET_VERSION]
                                   [ontology [ontology ...]]
 
 positional arguments:
-  ontology              Ontology file
+  ontology              Ontology file or directory containing OWL files.
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -40,15 +39,17 @@ optional arguments:
                         Adjust versionInfo, defaults to "Version X.x.x
   -d DEPENDENCY VERSION, --dependency-version DEPENDENCY VERSION
                         Update the import of DEPENDENCY to VERSION
+  -o {xml,turtle,nt}, --output-format {xml,turtle,nt}
+                        Output format
 ```
 
-The export sub-command will transform the ontology into the desired format, and remove version information, as required by tools such as Top Braid Composer.
+The `export` sub-command will transform the ontology into the desired format, and remove version information, as required by tools such as Top Braid Composer.
 ```
 $ python ontology-toolkit.py export -h
 usage: ontology-toolkit.py export [-h] [-s] [ontology [ontology ...]]
 
 positional arguments:
-  ontology              Ontology file
+  ontology              Ontology file or directory containing OWL files.
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -56,9 +57,11 @@ optional arguments:
                         Merge all inputs into a single ontology with the given
                         IRI and version
   -s, --strip-versions  Remove versions from imports.
+  -o {xml,turtle,nt}, --output-format {xml,turtle,nt}
+                        Output format
 ```
 
-The graphic sub-command will create either a comprehensive diagram showing ontology modules together with classes, object properties and "Things" together with the path of imports, or (if the 'wee' option is selected) a simple diagram of ontology modules and the import hierarchy.  Graphics are exported both as ```png``` files and also as a ```dot``` file.  This ```dot``` file can be used with Graphviz or with web tools such as [Model Viewer](http://www.semantechs.co.uk/model-viewer)
+The `graphic` sub-command will create either a comprehensive diagram showing ontology modules together with classes, object properties and "Things" together with the path of imports, or (if the 'wee' option is selected) a simple diagram of ontology modules and the import hierarchy.  Graphics are exported both as ```png``` files and also as a ```dot``` file.  This ```dot``` file can be used with Graphviz or with web tools such as [Model Viewer](http://www.semantechs.co.uk/model-viewer)
 
 ```
 $ python ontology-toolkit.py graphic -h
@@ -78,7 +81,7 @@ optional arguments:
                         about ontology and imports
 ```
 
-The bundle module is supports creating an ontology deployment containing both RDF and non-RDF artifacts for delivery or web hosting.
+The `bundle` sub-command supports creating an ontology deployment containing both RDF and non-RDF artifacts for delivery or web hosting.
 
 ```
 $ python ontology-toolkit.py bundle -h

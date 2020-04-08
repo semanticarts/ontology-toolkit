@@ -53,7 +53,7 @@ def configureArgParser():
                                nargs=2, default=[],
                                help='Update the import of DEPENDENCY to VERSION')
     update_parser.add_argument('ontology', nargs="*", default=[],
-                               help="Ontology file")
+                               help="Ontology file or directory containing OWL files")
 
     export_parser = subparsers.add_parser('export', help='Export ontology')
     export_parser.add_argument('-o', '--output-format', action='store',
@@ -67,7 +67,7 @@ def configureArgParser():
                                help='Merge all inputs into a single ontology'
                                ' with the given IRI and version')
     export_parser.add_argument('ontology', nargs="*", default=[],
-                               help="Ontology file")
+                               help="Ontology file or directory containing OWL files")
 
     bundle_parser = subparsers.add_parser('bundle', help='Bundle ontology for release')
     bundle_parser.add_argument('-v', '--variable', action="append",
