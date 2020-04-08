@@ -469,13 +469,13 @@ def main():
     args = configureArgParser().parse_args()
     g = None
 
-    of = 'pretty-xml' if args.output_format == 'xml' else args.output_format
-
     if args.command == 'bundle':
         return bundleOntology(args.variables, args.bundle)
 
     if args.command == 'graphic':
         return generateGraphic(args.ontology, args.wee, args.output, args.version)
+
+    of = 'pretty-xml' if args.output_format == 'xml' else args.output_format
 
     if 'merge' in args and args.merge:
         g = Graph()
