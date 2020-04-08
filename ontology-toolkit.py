@@ -33,14 +33,14 @@ class OntologyUriValidator(argparse.Action):
 def configureArgParser():
     """Configure command line parser."""
     parser = argparse.ArgumentParser(description='Ontology toolkit.')
-    parser.add_argument('--output-format', action='store',
-                        default='turtle',
-                        choices=['xml', 'turtle', 'n3'],
-                        help='Output format')
     subparsers = parser.add_subparsers(help='sub-command help', dest='command')
 
     update_parser = subparsers.add_parser('update',
                                           help='Update versions and dependencies')
+    update_parser.add_argument('-o', '--output-format', action='store',
+                               default='turtle',
+                               choices=['xml', 'turtle', 'nt'],
+                               help='Output format')
     update_parser.add_argument('-b', '--defined-by', action="store_true",
                                help='Add rdfs:isDefinedBy to every resource defined.')
     update_parser.add_argument('-v', '--set-version', action="store",
@@ -56,6 +56,10 @@ def configureArgParser():
                                help="Ontology file")
 
     export_parser = subparsers.add_parser('export', help='Export ontology')
+    export_parser.add_argument('-o', '--output-format', action='store',
+                               default='turtle',
+                               choices=['xml', 'turtle', 'nt'],
+                               help='Output format')
     export_parser.add_argument('-s', '--strip-versions', action="store_true",
                                help='Remove versions from imports.')
     export_parser.add_argument('-m', '--merge', action=OntologyUriValidator, nargs=2,
@@ -475,7 +479,7 @@ def main():
 
     if 'merge' in args and args.merge:
         g = Graph()
-        for onto_file in args.ontology:
+        for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
             g.parse(onto_file, format=guess_format(onto_file))
             logging.debug(f'{onto_file} has {len(g)} triples')
 
@@ -486,7 +490,7 @@ def main():
         cleanMergeArtifacts(g, URIRef(args.merge[0]), args.merge[1])
         print(g.serialize(format=of).decode('utf-8'))
     else:
-        for onto_file in args.ontology:
+        for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
             g = Graph()
             g.parse(onto_file, format=guess_format(onto_file))
             logging.debug(f'{onto_file} has {len(g)} triples')
