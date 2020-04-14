@@ -1,3 +1,4 @@
+"""Toolkit for ontology maintenance and release."""
 import logging
 import argparse
 import os
@@ -6,6 +7,8 @@ from glob import glob
 import re
 import subprocess
 import shutil
+import json
+import yaml
 from rdflib import Graph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
 from rdflib.util import guess_format
@@ -13,8 +16,11 @@ from ontograph import OntoGraf
 import mdutils
 
 
-class MergeAction(argparse.Action):
+class OntologyUriValidator(argparse.Action):
+    """Validates ontology IRI and version arguments."""
+
     def __call__(self, parser, namespace, values, option_string=None):
+        """First argument is a valid URI, 2nd a valid semantic version."""
         try:
             iri = URIRef(values[0])
         except Exception as e:
@@ -25,14 +31,16 @@ class MergeAction(argparse.Action):
 
 
 def configureArgParser():
+    """Configure command line parser."""
     parser = argparse.ArgumentParser(description='Ontology toolkit.')
-    parser.add_argument('--output-format', action='store',
-                        default='turtle',
-                        choices=['xml','turtle','n3'],
-                        help='Output format')
     subparsers = parser.add_subparsers(help='sub-command help', dest='command')
 
-    update_parser = subparsers.add_parser('update',help='Update versions and dependencies')
+    update_parser = subparsers.add_parser('update',
+                                          help='Update versions and dependencies')
+    update_parser.add_argument('-o', '--output-format', action='store',
+                               default='turtle',
+                               choices=['xml', 'turtle', 'nt'],
+                               help='Output format')
     update_parser.add_argument('-b', '--defined-by', action="store_true",
                                help='Add rdfs:isDefinedBy to every resource defined.')
     update_parser.add_argument('-v', '--set-version', action="store",
@@ -40,54 +48,54 @@ def configureArgParser():
     update_parser.add_argument('-i', '--version-info', action="store",
                                nargs='?', const='auto',
                                help='Adjust versionInfo, defaults to "Version X.x.x')
-    update_parser.add_argument('-d','--dependency-version', action="append",
-                               metavar=('DEPENDENCY','VERSION'),
+    update_parser.add_argument('-d', '--dependency-version', action="append",
+                               metavar=('DEPENDENCY', 'VERSION'),
                                nargs=2, default=[],
                                help='Update the import of DEPENDENCY to VERSION')
     update_parser.add_argument('ontology', nargs="*", default=[],
-                               help="Ontology file")
+                               help="Ontology file or directory containing OWL files")
 
-    export_parser = subparsers.add_parser('export',help='Export ontology')
+    export_parser = subparsers.add_parser('export', help='Export ontology')
+    export_parser.add_argument('-o', '--output-format', action='store',
+                               default='turtle',
+                               choices=['xml', 'turtle', 'nt'],
+                               help='Output format')
     export_parser.add_argument('-s', '--strip-versions', action="store_true",
                                help='Remove versions from imports.')
-    export_parser.add_argument('-m', '--merge', action=MergeAction, nargs=2,
-                               metavar=('IRI','VERSION'),
+    export_parser.add_argument('-m', '--merge', action=OntologyUriValidator, nargs=2,
+                               metavar=('IRI', 'VERSION'),
                                help='Merge all inputs into a single ontology'
                                ' with the given IRI and version')
     export_parser.add_argument('ontology', nargs="*", default=[],
-                               help="Ontology file")
+                               help="Ontology file or directory containing OWL files")
 
     bundle_parser = subparsers.add_parser('bundle', help='Bundle ontology for release')
-    bundle_parser.add_argument('-t', '--tools', action="store",
-                               help="Location of serializer tool")
-    bundle_parser.add_argument('-a', '--artifacts', action="store",
-                               help="Location of release artifacts "
-                               "(release notes, license, etc), defaults to "
-                               "current working directory",
-                               default = os.getcwd())
-    bundle_parser.add_argument('-c', '--catalog', action="store",
-                               help="Location of Protege catalog, defaults to "
-                               "OntologyFiles/bundle-catalog-v001.xml in the "
-                               "artifacts directory")
-    bundle_parser.add_argument('-o', '--output', action="store",
-                               help="Output directory for transformed ontology files")
-    bundle_parser.add_argument('version', help="Version string to replace X.x.x template")
-    bundle_parser.add_argument('ontology', nargs="*", default=[],
-                               help="Ontology file, directory or name pattern")
+    bundle_parser.add_argument('-v', '--variable', action="append",
+                               dest='variables',
+                               metavar=('VARIABLE', 'VALUE'),
+                               nargs=2, default=[],
+                               help='Set value of VARIABLE to VALUE')
+    bundle_parser.add_argument('bundle', default='bundle.json',
+                               help="JSON or YAML bundle definition")
 
-    graphic_parser = subparsers.add_parser('graphic',help='Create PNG graphic and dot file from OWL files')
+    graphic_parser = subparsers.add_parser('graphic',
+                                           help='Create PNG graphic and dot'
+                                           ' file from OWL files')
     graphic_parser.add_argument('-o', '--output', action="store",
-                                default = os.getcwd(),
+                                default=os.getcwd(),
                                 help="Output directory for generated graphics")
     graphic_parser.add_argument('-v', '--version', help="Version to place in graphic",
                                 action="store")
-    graphic_parser.add_argument('-w', '--wee', action="store_true", help="a version of the graphic with only core information about ontology and imports")
+    graphic_parser.add_argument('-w', '--wee', action="store_true",
+                                help="a version of the graphic with only core"
+                                " information about ontology and imports")
     graphic_parser.add_argument('ontology', nargs="*", default=[],
                                 help="Ontology file, directory or name pattern")
     return parser
 
 
 def findSingleOntology(g, onto_file):
+    """Verify that file has a single ontology defined and return the IRI."""
     ontologies = list(g.subjects(RDF.type, OWL.Ontology))
     if len(ontologies) == 0:
         logging.warning(f'No ontology definition found in {onto_file}')
@@ -102,6 +110,7 @@ def findSingleOntology(g, onto_file):
 
 
 def setVersion(g, ontology, ontologyIRI, version):
+    """Add or replace versionIRI for the specified ontology."""
     g.add((ontology, OWL.ontologyIRI, ontologyIRI))
     logging.debug(f'ontologyIRI {ontologyIRI} added for {ontology}')
 
@@ -116,7 +125,11 @@ def setVersion(g, ontology, ontologyIRI, version):
 
 
 def setVersionInfo(g, ontology, versionInfo):
-    pattern = re.compile('^(.*?)(\d+\.\d+\.\d+)?$')
+    """Add versionInfo for the ontology.
+
+    If versionInfo is not provided, extracts ontology version from versionIRI.
+    """
+    pattern = re.compile('^(.*?)(\\d+\\.\\d+\\.\\d+)?$')
     versionIRI = next(g.objects(ontology, OWL.versionIRI), None)
     version = pattern.match(str(versionIRI)).group(2) if versionIRI else None
     if not version and not versionInfo:
@@ -134,31 +147,41 @@ def setVersionInfo(g, ontology, versionInfo):
 
 
 def addDefinedBy(g, ontologyIRI):
-    definitions = g.query("""
-    SELECT distinct ?defined ?label ?defBy WHERE {
-      VALUES ?dtype { owl:Class owl:ObjectProperty owl:DatatypeProperty }
-      ?defined a ?dtype ; skos:prefLabel|rdfs:label ?label .
-      OPTIONAL { ?defined rdfs:isDefinedBy ?defBy }
-    }
-    """,
-    initNs={'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+    """Add rdfs:isDefinedBy to every entity declared by the ontology."""
+    definitions = g.query(
+        """
+        SELECT distinct ?defined ?label ?defBy WHERE {
+          VALUES ?dtype { owl:Class owl:ObjectProperty owl:DatatypeProperty }
+          ?defined a ?dtype ; skos:prefLabel|rdfs:label ?label .
+          OPTIONAL { ?defined rdfs:isDefinedBy ?defBy }
+        }
+        """,
+        initNs={'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
     for d in definitions:
         if d.defBy:
             if d.defBy == ontologyIRI:
                 logging.debug(f'{d.defined} already defined by {ontologyIRI}')
             else:
-                logging.warning(f'{d.defined} defined by {d.defBy} instead of {ontologyIRI}')
+                logging.warning(f'{d.defined} defined by {d.defBy}'
+                                f' instead of {ontologyIRI}')
         else:
             logging.debug(f'Added definedBy to {d.defined}')
             g.add((d.defined, RDFS.isDefinedBy, ontologyIRI))
 
 
 def updateDependencyVersions(g, ontology, versions):
+    """Update ontology dependency versions.
+
+    The versions dict maps ontology IRI to their versions.
+    Inspect the imports of the current ontology, and if they match
+    (ignoring version) any of the ontology provided in the argument,
+    update them to the new version.
+    """
     # Gather current dependencies
     currentDeps = g.objects(ontology, OWL.imports)
     for dv in versions:
         dep, ver = dv
-        pattern = re.compile(f'{dep}(\d+\.\d+\.\d+)?')
+        pattern = re.compile(f'{dep}(\\d+\\.\\d+\\.\\d+)?')
         match = next((c for c in currentDeps if pattern.search(str(c))), None)
         if match:
             # Updating current dependency
@@ -181,11 +204,12 @@ def updateDependencyVersions(g, ontology, versions):
 
 
 def stripVersions(g, ontology=None):
+    """Remove versions (numeric or X.x.x placeholder) from imports."""
     # Gather current dependencies
     ontologies = [ontology] if ontology else list(g.subjects(RDF.type, OWL.Ontology))
     for o in ontologies:
         currentDeps = g.objects(o, OWL.imports)
-        pattern = re.compile('^(.*?)((\d+|[Xx])\.(\d+|[Xx])\.(\d+|[Xx]))?$')
+        pattern = re.compile('^(.*?)((\\d+|[Xx])\\.(\\d+|[Xx])\\.(\\d+|[Xx]))?$')
         for d in currentDeps:
             match = pattern.match(str(d))
             if match.group(2):
@@ -195,6 +219,7 @@ def stripVersions(g, ontology=None):
 
 
 def versionSensitiveMatch(reference, ontologies):
+    """Check if reference is in ontologies, ignoring version."""
     match = re.match(r'^(.*?)((\d+|[Xx])\.(\d+|[Xx])\.(\d+|[Xx]))?$',
                      str(reference))
     refWithoutVersion = match.group(1)
@@ -202,6 +227,7 @@ def versionSensitiveMatch(reference, ontologies):
 
 
 def cleanMergeArtifacts(g, iri, version):
+    """Remove all existing ontology declaration, replace with new merged ontology."""
     ontologies = set(g.subjects(RDF.type, OWL.Ontology))
     externalImports = list(
             i for i in g.objects(subject=None, predicate=OWL.imports)
@@ -218,21 +244,27 @@ def cleanMergeArtifacts(g, iri, version):
 
 
 def expandFileRef(path):
+    """Expand file reference to a list of paths.
+
+    If a file is provided, return as is. If a directory, return all .owl
+    files in the directory, outherwise interpret path as a glob pattern.
+    """
     if isfile(path):
         return [path]
     elif isdir(path):
-        return glob(join(path,'*.owl'))
+        return glob(join(path, '*.owl'))
     else:
         return glob(path)
 
 
 def serializeToOutputDir(tools, output, version, file):
+    """Serialize ontology file using standard options."""
     base, ext = splitext(basename(file))
     outputFile = join(output, f"{base}{version}{ext}")
     logging.debug(f"Serializing {file} to {output}")
     serializeArgs = [
             "java",
-            "-jar", join(tools,"rdf-toolkit.jar"),
+            "-jar", join(tools, "rdf-toolkit.jar"),
             "-tfmt", "rdf-xml",
             "-sdt", "explicit",
             "-dtd",
@@ -243,97 +275,211 @@ def serializeToOutputDir(tools, output, version, file):
     return outputFile
 
 
-def updateVersion(file, version):
+def replaceStringInFile(file, from_string, to_string):
+    """Substitute version placeholder for actual version in file."""
     with open(file, 'r') as f:
-        replaced = f.read().replace('X.x.x', version)
+        replaced = f.read().replace(from_string, to_string)
     with open(file, 'w') as f:
         f.write(replaced)
 
 
 def copyIfPresent(fromLoc, toLoc):
+    """Copy file to new location if present."""
     if isfile(fromLoc):
         shutil.copy(fromLoc, toLoc)
 
 
-def generateGraphic(args):
-    allFiles = [file for ref in args.ontology for file in expandFileRef(ref)]
-    print(args.wee)
-    og = OntoGraf(allFiles, outpath=args.output, wee=args.wee, version=args.version)
+def generateGraphic(fileRefs, compact, output, version):
+    """
+    Generate ontology .dot and .png graphic.
+
+    Parameters
+    ----------
+    fileRefs : list(string)
+        List of paths or glob patterns from which to gather ontologies.
+    compact : boolean
+        If True, generate a compact ontology graph.
+    output : string
+        Path of directory where graph will be output.
+    version : string
+        Version to be used in graphic title.
+
+    Returns
+    -------
+    None.
+
+    """
+    allFiles = [file for ref in fileRefs for file in expandFileRef(ref)]
+    og = OntoGraf(allFiles, outpath=output, wee=compact, version=version)
     og.gatherInfo()
     og.createGraf()
 
 
-def bundleOntology(args):
-    output = args.output if args.output else \
-        join(os.getcwd(), f"gist{args.version}_webDownload")
-    if not isdir(output):
-        os.mkdir(output)
+class VarDict(dict):
+    """Dict that performs variable substitution on values."""
 
-    if len(args.ontology) == 0:
-        specifiedFiles = [join(args.artifacts, 'OntologyFiles')]
+    def __init__(self, *args):
+        """Initialize."""
+        dict.__init__(self, args)
+
+    def __getitem__(self, k):
+        """Interpret raw value as template to be substituted with variables."""
+        template = dict.__getitem__(self, k)
+        return template.format(**self)
+
+
+def __bundle_file_list(action, variables):
+    if 'includes' in action:
+        # source and target are directories, apply glob
+        src_dir = action['source'].format(**variables)
+        tgt_dir = action['target'].format(**variables)
+        if not isdir(tgt_dir):
+            os.mkdir(tgt_dir)
+        for pattern in action['includes']:
+            for input_file in glob(os.path.join(src_dir, pattern)):
+                yield dict(inputFile=input_file,
+                           outputFile=os.path.join(tgt_dir, os.path.basename(input_file)))
     else:
-        specifiedFiles = args.ontology
-    allFiles = [file for ref in specifiedFiles for file in expandFileRef(ref)]
-    for file in allFiles:
-        serialized = serializeToOutputDir(
-                args.tools if args.tools else join(args.artifacts, 'tools'),
-                output,
-                args.version,
-                file)
-        updateVersion(serialized, args.version)
-
-    copyIfPresent(join(args.artifacts, 'LICENSE.txt'), output)
-    copyIfPresent(join(args.artifacts, 'doc', 'ReleaseNotes.md'), output)
-    if isfile(join(output, 'ReleaseNotes.md')):
-        conv = mdutils.md2html()
-        filepath_in = join(output, 'ReleaseNotes.md')
-        filepath_out = join(output, 'ReleaseNotes.html')
-        md = open(filepath_in).read()
-        converted_md = conv.md2html(md)
-        with open (filepath_out, 'w') as fd:
-            converted_md.seek (0)
-            shutil.copyfileobj (converted_md, fd, -1)
+        yield dict(inputFile=action['source'].format(**variables),
+                   outputFile=action['target'].format(**variables))
 
 
-    catalog = args.catalog if args.catalog else \
-        join(args.artifacts, 'OntologyFiles', 'bundle-catalog-v001.xml')
-    if isfile(catalog):
-        copied = join(output, 'catalog-v001.xml')
-        shutil.copy(catalog, copied)
-        updateVersion(copied, args.version)
+def __bundle_transform__(action, tools, variables):
+    logging.debug('Transform %s', action)
+    tool = next((t for t in tools if t['name'] == action['tool']), None)
+    if not tool:
+        raise Exception('Missing tool ', action['tool'])
+    if tool['type'] != 'Java':
+        raise Exception('Unsupported tool type ', tool['type'])
 
-    deprecated = join(output, 'Deprecated')
-    if not isdir(deprecated):
-        os.mkdir(deprecated)
-    for d in glob(join(output, '*Deprecated*')):
-        shutil.move(d, deprecated)
+    for in_out in __bundle_file_list(action, variables):
+        invocation_vars = VarDict()
+        invocation_vars.update(variables)
+        invocation_vars.update(in_out)
+        interpreted_args = ["java", "-jar", tool['jar'].format(**invocation_vars)] + [
+            arg.format(**invocation_vars) for arg in tool['arguments']]
+        logging.debug('Running %s', interpreted_args)
+        subprocess.run(interpreted_args)
+        if 'replace' in action:
+            replaceStringInFile(in_out['outputFile'],
+                                action['replace']['from'].format(**invocation_vars),
+                                action['replace']['to'].format(**invocation_vars))
 
-    documentation = join(output, 'Documentation')
+
+def __bundle_copy__(action, variables):
+    logging.debug('Copy %s', action)
+    for in_out in __bundle_file_list(action, variables):
+        if isfile(in_out['inputFile']):
+            shutil.copy(in_out['inputFile'], in_out['outputFile'])
+            if 'replace' in action:
+                replaceStringInFile(in_out['outputFile'],
+                                    action['replace']['from'].format(**variables),
+                                    action['replace']['to'].format(**variables))
+
+
+def __bundle_move__(action, variables):
+    logging.debug('Move %s', action)
+    for in_out in __bundle_file_list(action, variables):
+        if isfile(in_out['inputFile']):
+            shutil.move(in_out['inputFile'], in_out['outputFile'])
+            if 'replace' in action:
+                replaceStringInFile(in_out['outputFile'],
+                                    action['replace']['from'].format(**variables),
+                                    action['replace']['to'].format(**variables))
+
+
+def __bundle_markdown__(action, variables):
+    logging.debug('Markdown %s', action)
+    conv = mdutils.md2html()
+    filepath_in = action['source'].format(**variables)
+    filepath_out = action['target'].format(**variables)
+    md = open(filepath_in).read()
+    converted_md = conv.md2html(md)
+    with open(filepath_out, 'w') as fd:
+        converted_md.seek(0)
+        shutil.copyfileobj(converted_md, fd, -1)
+
+
+def __bundle_graph__(action, variables):
+    logging.debug('Graph %s', action)
+    documentation = action['target'].format(**variables)
+    version = action['version'].format(**variables)
+    title = action['title'].format(**variables)
     if not isdir(documentation):
         os.mkdir(documentation)
-    og = OntoGraf([f for f in allFiles if not 'Deprecated' in f],
-                   outpath=documentation, version=args.version)
+    compact = action['compact'] if 'compact' in action else False
+    og = OntoGraf([f['inputFile'] for f in __bundle_file_list(action, variables)],
+                  outpath=documentation, wee=compact, title=title, version=version)
     og.gatherInfo()
     og.createGraf()
+
+
+def bundleOntology(command_line_variables, bundle_path):
+    """
+    Bundle ontology and related artifacts for release.
+
+    Parameters
+    ----------
+    variables : list
+        list of variable values to substitute into the template.
+    bundle : string
+        Path to YAML or JSON bundle defintion.
+
+    Returns
+    -------
+    None.
+
+    """
+    extension = os.path.splitext(bundle_path)[1]
+    with open(bundle_path, 'r') as b_stream:
+        if extension == '.yaml':
+            bundle = yaml.safe_load(b_stream)
+        else:
+            # assume json regardless of extension
+            bundle = json.load(b_stream)
+
+    variables = VarDict()
+    variables.update(bundle['variables'])
+    variables.update(dict((n, v) for n, v in command_line_variables))
+    substituted = dict((k, variables[k]) for k in variables)
+
+    for action in bundle['actions']:
+        if action['action'] == 'transform':
+            __bundle_transform__(action, bundle['tools'], substituted)
+        elif action['action'] == 'mkdir':
+            path = action['directory'].format(**substituted)
+            if not isdir(path):
+                os.mkdir(path)
+        elif action['action'] == 'copy':
+            __bundle_copy__(action, substituted)
+        elif action['action'] == 'move':
+            __bundle_move__(action, substituted)
+        elif action['action'] == 'markdown':
+            __bundle_markdown__(action, substituted)
+        elif action['action'] == 'graph':
+            __bundle_graph__(action, substituted)
+        else:
+            raise Exception('Unknown action ' + action)
 
 
 def main():
+    """Do the thing."""
     logging.basicConfig(level=logging.DEBUG)
 
     args = configureArgParser().parse_args()
     g = None
 
-    of = 'pretty-xml' if args.output_format == 'xml' else args.output_format
-
     if args.command == 'bundle':
-        return bundleOntology(args)
+        return bundleOntology(args.variables, args.bundle)
 
     if args.command == 'graphic':
-        return generateGraphic(args)
+        return generateGraphic(args.ontology, args.wee, args.output, args.version)
+
+    of = 'pretty-xml' if args.output_format == 'xml' else args.output_format
 
     if 'merge' in args and args.merge:
         g = Graph()
-        for onto_file in args.ontology:
+        for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
             g.parse(onto_file, format=guess_format(onto_file))
             logging.debug(f'{onto_file} has {len(g)} triples')
 
@@ -344,7 +490,7 @@ def main():
         cleanMergeArtifacts(g, URIRef(args.merge[0]), args.merge[1])
         print(g.serialize(format=of).decode('utf-8'))
     else:
-        for onto_file in args.ontology:
+        for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
             g = Graph()
             g.parse(onto_file, format=guess_format(onto_file))
             logging.debug(f'{onto_file} has {len(g)} triples')
