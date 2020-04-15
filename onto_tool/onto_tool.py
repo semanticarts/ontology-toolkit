@@ -595,5 +595,10 @@ def main(arguments):
         updateOntology(args, of)
 
 
-if __name__ == '__main__':
+def run_tool():
+    """Entry point for executable script."""
     main(sys.argv[1:])
+
+
+if __name__ == '__main__':
+    run_tool()
