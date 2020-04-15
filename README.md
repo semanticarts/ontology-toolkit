@@ -1,10 +1,15 @@
-## ontology-toolkit
+# ontology-toolkit
 
 Maintain version and dependency info in RDF ontologies.
 
+## Installation
+
+To install the toolkit, run `pip install .` from the root directory, which
+will install the `onto_tool` command and all its dependencies into your environment.
+
 ```
-$ python ontology-toolkit.py -h
-usage: ontology-toolkit.py [-h] {update,export,bundle,graphic} ...
+$ onto_tool -h
+usage: onto_tool [-h] {update,export,bundle,graphic} ...
 
 Ontology toolkit.
 
@@ -20,12 +25,16 @@ optional arguments:
   -h, --help            show this help message and exit
 ```
 
+## Sub-Commands
+
+### Update
+
 The `update` sub-command modifies ontology version and dependency information
 ```
-$ python ontology-toolkit.py update -h
-usage: ontology-toolkit.py update [-h] [-b] [-v SET_VERSION]
-                                  [-i [VERSION_INFO]] [-d DEPENDENCY VERSION]
-                                  [ontology [ontology ...]]
+$ onto_tool update -h
+usage: onto_tool update [-h] [-b] [-v SET_VERSION]
+                        [-i [VERSION_INFO]] [-d DEPENDENCY VERSION]
+                        [ontology [ontology ...]]
 
 positional arguments:
   ontology              Ontology file or directory containing OWL files.
@@ -43,12 +52,14 @@ optional arguments:
                         Output format
 ```
 
+### Export
+
 The `export` sub-command will transform the ontology into the desired format, and remove version information, as required by tools such as Top Braid Composer.
 ```
-$ python ontology-toolkit.py export -h
-usage: ontology-toolkit.py export [-h] [-o {xml,turtle,nt} | -c CONTEXT] [-s]
-                                  [-m IRI VERSION]
-                                  [ontology [ontology ...]]
+$ onto_tool export -h
+usage: onto_tool export [-h] [-o {xml,turtle,nt} | -c CONTEXT] [-s]
+                        [-m IRI VERSION]
+                        [ontology [ontology ...]]
 
 positional arguments:
   ontology              Ontology file or directory containing OWL files
@@ -65,12 +76,14 @@ optional arguments:
                         IRI and version
 ```
 
+### Graphic
+
 The `graphic` sub-command will create either a comprehensive diagram showing ontology modules together with classes, object properties and "Things" together with the path of imports, or (if the 'wee' option is selected) a simple diagram of ontology modules and the import hierarchy.  Graphics are exported both as ```png``` files and also as a ```dot``` file.  This ```dot``` file can be used with Graphviz or with web tools such as [Model Viewer](http://www.semantechs.co.uk/model-viewer)
 
 ```
-$ python ontology-toolkit.py graphic -h
-usage: ontology-toolkit.py graphic [-h] [-o OUTPUT] [-v VERSION] [-w]
-                                   [ontology [ontology ...]]
+$ onto_tool graphic -h
+usage: onto_tool graphic [-h] [-o OUTPUT] [-v VERSION] [-w]
+                         [ontology [ontology ...]]
 
 positional arguments:
   ontology              Ontology file, directory or name pattern
@@ -85,11 +98,13 @@ optional arguments:
                         about ontology and imports
 ```
 
+### Bundle
+
 The `bundle` sub-command supports creating an ontology deployment containing both RDF and non-RDF artifacts for delivery or web hosting.
 
 ```
-$ python ontology-toolkit.py bundle -h
-usage: ontology-toolkit.py bundle [-h] [-v VARIABLE VALUE] bundle
+$ onto_tool bundle -h
+usage: onto_tool bundle [-h] [-v VARIABLE VALUE] bundle
 
 positional arguments:
   bundle                JSON or YAML bundle definition
@@ -102,7 +117,7 @@ optional arguments:
 
 The bundle definition is either YAML or JSON, and contains the following sections:
 
-### Variable definition
+#### Variable definition
 
 ```yaml
 variables:
@@ -115,7 +130,7 @@ variables:
 Variables are initialized with the default values provided, but can be overriden via the `--variable` command line option.
 Values can reference other values using the `{name}` template syntax.
 
-### Tool definition
+#### Tool definition
 
 ```yaml
 tools:
@@ -139,7 +154,7 @@ a path to the executable Jar file and a list of `arguments` that will be applied
 The `inputFile` and `outputFile` variables will be bound during execution, but other variables can be
 used to construct the arguments.
 
-### Actions
+#### Actions
 
 Actions are executed in the order they are listed. Each action must have an `action` attribute, which can be 
 one of the following values:
