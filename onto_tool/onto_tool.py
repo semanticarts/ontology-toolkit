@@ -14,8 +14,8 @@ import yaml
 from rdflib import Graph, ConjunctiveGraph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
 from rdflib.util import guess_format
-from ontograph import OntoGraf
-import mdutils
+from .ontograph import OntoGraf
+from .mdutils import md2html
 
 # f-strings are fine in log messages
 # pylint: disable=W1202
@@ -426,7 +426,7 @@ def __bundle_move__(action, variables):
 
 def __bundle_markdown__(action, variables):
     logging.debug('Markdown %s', action)
-    conv = mdutils.md2html()
+    conv = md2html()
     filepath_in = action['source'].format(**variables)
     filepath_out = action['target'].format(**variables)
     md = open(filepath_in).read()
