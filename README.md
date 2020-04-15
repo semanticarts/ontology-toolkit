@@ -46,19 +46,23 @@ optional arguments:
 The `export` sub-command will transform the ontology into the desired format, and remove version information, as required by tools such as Top Braid Composer.
 ```
 $ python ontology-toolkit.py export -h
-usage: ontology-toolkit.py export [-h] [-s] [ontology [ontology ...]]
+usage: ontology-toolkit.py export [-h] [-o {xml,turtle,nt} | -c CONTEXT] [-s]
+                                  [-m IRI VERSION]
+                                  [ontology [ontology ...]]
 
 positional arguments:
-  ontology              Ontology file or directory containing OWL files.
+  ontology              Ontology file or directory containing OWL files
 
 optional arguments:
   -h, --help            show this help message and exit
+  -o {xml,turtle,nt}, --output-format {xml,turtle,nt}
+                        Output format
+  -c CONTEXT, --context CONTEXT
+                        Export as N-Quads in CONTEXT.
+  -s, --strip-versions  Remove versions from imports.
   -m IRI VERSION, --merge IRI VERSION
                         Merge all inputs into a single ontology with the given
                         IRI and version
-  -s, --strip-versions  Remove versions from imports.
-  -o {xml,turtle,nt}, --output-format {xml,turtle,nt}
-                        Output format
 ```
 
 The `graphic` sub-command will create either a comprehensive diagram showing ontology modules together with classes, object properties and "Things" together with the path of imports, or (if the 'wee' option is selected) a simple diagram of ontology modules and the import hierarchy.  Graphics are exported both as ```png``` files and also as a ```dot``` file.  This ```dot``` file can be used with Graphviz or with web tools such as [Model Viewer](http://www.semantechs.co.uk/model-viewer)
