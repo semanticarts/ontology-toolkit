@@ -1,14 +1,15 @@
+"""
+Provides functionality for converting markdown files to other formats.
+
+In the first instance this is to HTML5
+The class md2html() has a template that calls bootstrap for styling
+"""
+
 import jinja2
 import markdown
 import io
 import shutil
 
-'''
-mdutils.py
-the module provides functionality for converting markdown files to other formats.
-In the first instance this is to HTML5
-The class md2html() has a template that calls bootstrap for styling
-'''
 
 class md2html():
 

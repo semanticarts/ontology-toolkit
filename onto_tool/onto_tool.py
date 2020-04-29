@@ -2,29 +2,61 @@
 import logging
 import argparse
 import os
+import sys
 from os.path import join, isdir, isfile, basename, splitext
 from glob import glob
+from urllib.parse import urlparse
 import re
 import subprocess
 import shutil
 import json
 import yaml
-from rdflib import Graph, URIRef, Literal
+from rdflib import Graph, ConjunctiveGraph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
 from rdflib.util import guess_format
-from ontograph import OntoGraf
-import mdutils
+from .ontograph import OntoGraf
+from .mdutils import md2html
+
+# f-strings are fine in log messages
+# pylint: disable=W1202
+# CamelCase variable names are fine
+# pylint: disable=C0103
+
+
+def _uri_validator(x):
+    """Check for valid URI."""
+    try:
+        result = urlparse(x)
+        return all([result.scheme, result.netloc, result.path])
+    except ValueError:
+        return False
+
+
+class UriValidator(argparse.Action):
+    """Validates IRI argument."""
+
+    # No public method needed
+    # pylint: disable=R0903
+    def __call__(self, parser, namespace, values, option_string=None):
+        """First argument is a valid URI, 2nd a valid semantic version."""
+        if _uri_validator(values):
+            iri = URIRef(values)
+        else:
+            parser.error(f'Invalid URI {values}')
+        setattr(namespace, self.dest, iri)
 
 
 class OntologyUriValidator(argparse.Action):
     """Validates ontology IRI and version arguments."""
 
+    # No public method needed
+    # pylint: disable=R0903
     def __call__(self, parser, namespace, values, option_string=None):
         """First argument is a valid URI, 2nd a valid semantic version."""
-        try:
+        if _uri_validator(values[0]):
             iri = URIRef(values[0])
-        except Exception as e:
-            parser.error(f'Invalid merge ontology URI {values[0]}: {e}')
+        else:
+            parser.error(f'Invalid merge ontology URI {values[0]}')
         if not re.match(r'\d+(\.\d+){0,2}', values[1]):
             parser.error(f'Invalid merge ontology version {values[1]}')
         setattr(namespace, self.dest, [iri, values[1]])
@@ -56,10 +88,15 @@ def configureArgParser():
                                help="Ontology file or directory containing OWL files")
 
     export_parser = subparsers.add_parser('export', help='Export ontology')
-    export_parser.add_argument('-o', '--output-format', action='store',
+
+    format_parser = export_parser.add_mutually_exclusive_group()
+    format_parser.add_argument('-o', '--output-format', action='store',
                                default='turtle',
                                choices=['xml', 'turtle', 'nt'],
                                help='Output format')
+    format_parser.add_argument('-c', '--context', action=UriValidator,
+                               help='Export as N-Quads in CONTEXT.')
+
     export_parser.add_argument('-s', '--strip-versions', action="store_true",
                                help='Remove versions from imports.')
     export_parser.add_argument('-m', '--merge', action=OntologyUriValidator, nargs=2,
@@ -100,7 +137,7 @@ def findSingleOntology(g, onto_file):
     if len(ontologies) == 0:
         logging.warning(f'No ontology definition found in {onto_file}')
         return None
-    elif len(ontologies) > 1:
+    if len(ontologies) > 1:
         logging.error(f'Multiple ontologies defined in {onto_file}, skipping')
         return None
 
@@ -230,8 +267,8 @@ def cleanMergeArtifacts(g, iri, version):
     """Remove all existing ontology declaration, replace with new merged ontology."""
     ontologies = set(g.subjects(RDF.type, OWL.Ontology))
     externalImports = list(
-            i for i in g.objects(subject=None, predicate=OWL.imports)
-            if not versionSensitiveMatch(i, ontologies))
+        i for i in g.objects(subject=None, predicate=OWL.imports)
+        if not versionSensitiveMatch(i, ontologies))
     for o in ontologies:
         for t in list(g.triples((o, None, None))):
             g.remove(t)
@@ -251,10 +288,9 @@ def expandFileRef(path):
     """
     if isfile(path):
         return [path]
-    elif isdir(path):
+    if isdir(path):
         return glob(join(path, '*.owl'))
-    else:
-        return glob(path)
+    return glob(path)
 
 
 def serializeToOutputDir(tools, output, version, file):
@@ -263,14 +299,14 @@ def serializeToOutputDir(tools, output, version, file):
     outputFile = join(output, f"{base}{version}{ext}")
     logging.debug(f"Serializing {file} to {output}")
     serializeArgs = [
-            "java",
-            "-jar", join(tools, "rdf-toolkit.jar"),
-            "-tfmt", "rdf-xml",
-            "-sdt", "explicit",
-            "-dtd",
-            "-ibn",
-            "-s", file,
-            "-t", outputFile]
+        "java",
+        "-jar", join(tools, "rdf-toolkit.jar"),
+        "-tfmt", "rdf-xml",
+        "-sdt", "explicit",
+        "-dtd",
+        "-ibn",
+        "-s", file,
+        "-t", outputFile]
     subprocess.run(serializeArgs)
     return outputFile
 
@@ -390,7 +426,7 @@ def __bundle_move__(action, variables):
 
 def __bundle_markdown__(action, variables):
     logging.debug('Markdown %s', action)
-    conv = mdutils.md2html()
+    conv = md2html()
     filepath_in = action['source'].format(**variables)
     filepath_out = action['target'].format(**variables)
     md = open(filepath_in).read()
@@ -462,79 +498,107 @@ def bundleOntology(command_line_variables, bundle_path):
             raise Exception('Unknown action ' + action)
 
 
-def main():
+def exportOntology(args, output_format):
+    """Export one or more files as a single output.
+
+    Optionally, strips dependency versions and merges ontologies into
+    a single new ontology.
+    """
+    if 'context' in args:
+        g = ConjunctiveGraph()
+        parse_graph = g.get_context(args.context)
+        output_format = 'nquads'
+    else:
+        g = Graph()
+        parse_graph = g
+
+    for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
+        parse_graph.parse(onto_file, format=guess_format(onto_file))
+
+    # Remove dep versions
+    if 'strip_versions' in args and args.strip_versions:
+        stripVersions(parse_graph)
+
+    if 'merge' in args and args.merge:
+        cleanMergeArtifacts(parse_graph, URIRef(args.merge[0]), args.merge[1])
+    print(g.serialize(format=output_format).decode('utf-8'))
+
+
+def updateOntology(args, output_format):
+    """Maintenance updates for ontology files."""
+    for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
+        g = Graph()
+        g.parse(onto_file, format=guess_format(onto_file))
+        logging.debug(f'{onto_file} has {len(g)} triples')
+
+        # locate ontology
+        ontology = findSingleOntology(g, onto_file)
+        if not ontology:
+            logging.warning(f'Ignoring {onto_file}, no ontology found')
+            continue
+
+        ontologyIRI = next(g.objects(ontology, OWL.ontologyIRI), None)
+        if ontologyIRI:
+            logging.debug(f'{ontologyIRI} found for {ontology}')
+        else:
+            ontologyIRI = ontology
+
+        # Set version
+        if 'set_version' in args and args.set_version:
+            setVersion(g, ontology, ontologyIRI, args.set_version)
+        if 'version_info' in args and args.version_info:
+            versionInfo = args.version_info
+            if versionInfo == 'auto':
+                # Not specified, generate automatically
+                versionInfo = None
+            try:
+                setVersionInfo(g, ontology, versionInfo)
+            except Exception as e:
+                logging.error(e)
+                continue
+
+        # Add rdfs:isDefinedBy
+        if 'defined_by' in args and args.defined_by:
+            addDefinedBy(g, ontologyIRI)
+
+        # Update dep versions
+        if 'dependency_version' in args and args.dependency_version:
+            updateDependencyVersions(g, ontology, args.dependency_version)
+
+        # Remove dep versions
+        if 'strip_versions' in args and args.strip_versions:
+            stripVersions(g, ontology)
+
+        # Output
+        print(g.serialize(format=output_format).decode('utf-8'))
+
+
+def main(arguments):
     """Do the thing."""
     logging.basicConfig(level=logging.DEBUG)
 
-    args = configureArgParser().parse_args()
-    g = None
+    args = configureArgParser().parse_args(args=arguments)
 
     if args.command == 'bundle':
-        return bundleOntology(args.variables, args.bundle)
+        bundleOntology(args.variables, args.bundle)
+        return
 
     if args.command == 'graphic':
-        return generateGraphic(args.ontology, args.wee, args.output, args.version)
+        generateGraphic(args.ontology, args.wee, args.output, args.version)
+        return
 
     of = 'pretty-xml' if args.output_format == 'xml' else args.output_format
 
-    if 'merge' in args and args.merge:
-        g = Graph()
-        for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
-            g.parse(onto_file, format=guess_format(onto_file))
-            logging.debug(f'{onto_file} has {len(g)} triples')
-
-            # Remove dep versions
-            if 'strip_versions' in args and args.strip_versions:
-                stripVersions(g)
-
-        cleanMergeArtifacts(g, URIRef(args.merge[0]), args.merge[1])
-        print(g.serialize(format=of).decode('utf-8'))
+    if args.command == 'export':
+        exportOntology(args, of)
     else:
-        for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
-            g = Graph()
-            g.parse(onto_file, format=guess_format(onto_file))
-            logging.debug(f'{onto_file} has {len(g)} triples')
+        updateOntology(args, of)
 
-            # locate ontology
-            ontology = findSingleOntology(g, onto_file)
-            if not ontology:
-                continue
 
-            ontologyIRI = next(g.objects(ontology, OWL.ontologyIRI), None)
-            if ontologyIRI:
-                logging.debug(f'{ontologyIRI} found for {ontology}')
-            else:
-                ontologyIRI = ontology
-
-            # Set version
-            if 'set_version' in args and args.set_version:
-                setVersion(g, ontology, ontologyIRI, args.set_version)
-            if 'version_info' in args and args.version_info:
-                versionInfo = args.version_info
-                if versionInfo == 'auto':
-                    # Not specified, generate automatically
-                    versionInfo = None
-                try:
-                    setVersionInfo(g, ontology, versionInfo)
-                except Exception as e:
-                    logging.error(e)
-                    continue
-
-            # Add rdfs:isDefinedBy
-            if 'defined_by' in args and args.defined_by:
-                addDefinedBy(g, ontologyIRI)
-
-            # Update dep versions
-            if 'dependency_version' in args and len(args.dependency_version):
-                updateDependencyVersions(g, ontology, args.dependency_version)
-
-            # Remove dep versions
-            if 'strip_versions' in args and args.strip_versions:
-                stripVersions(g, ontology)
-
-            # Output
-            print(g.serialize(format=of).decode('utf-8'))
+def run_tool():
+    """Entry point for executable script."""
+    main(sys.argv[1:])
 
 
 if __name__ == '__main__':
-    main()
+    run_tool()

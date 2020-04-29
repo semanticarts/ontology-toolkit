@@ -1,3 +1,12 @@
+"""
+Generates a graphical representation of a collection of ontologies.
+
+It extracts the classes, object properties, data properties (if any),
+and entities of subClass "owl:Thing". It establishes the imports for each file,
+and then presents the results as a graphviz 'dot' file and a .png file.
+@version 2
+"""
+
 from rdflib import Graph, BNode
 from rdflib.namespace import RDF, OWL
 from rdflib.util import guess_format
@@ -7,13 +16,6 @@ import pydot
 import os
 import re
 import datetime
-
-"""from onto-graph.py
-This is a small routine to describe a collection of Gist OWL files.
-It extracts the classes, object properties, data properties (if any), and Gist entities of subClass  "owl:Thing".
-It establishes the imports for each file, and then presents the results as a graphviz 'dot' file and a .png file.
-@version 2
-"""
 
 class OntoGraf():
     def __init__(self, files, outpath='.', wee=False, title='Gist', version=None):
