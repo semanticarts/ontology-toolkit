@@ -373,8 +373,17 @@ def __bundle_file_list(action, variables):
             os.mkdir(tgt_dir)
         for pattern in action['includes']:
             for input_file in glob(os.path.join(src_dir, pattern)):
+                if 'rename' in action:
+                    from_pattern = re.compile(
+                        action['rename']['from'].format(**variables))
+                    to_pattern = action['rename']['to'].format(**variables)
+                    output_file = from_pattern.sub(
+                        to_pattern,
+                        os.path.basename(input_file))
+                else:
+                    output_file = os.path.basename(input_file)
                 yield dict(inputFile=input_file,
-                           outputFile=os.path.join(tgt_dir, os.path.basename(input_file)))
+                           outputFile=os.path.join(tgt_dir, output_file))
     else:
         yield dict(inputFile=action['source'].format(**variables),
                    outputFile=action['target'].format(**variables))

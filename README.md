@@ -165,6 +165,15 @@ one of the following values:
     assumed to be file paths to a single file. If `includes` is provided, `source` and `target` are 
     assumed to be directories, and each member of the `includes` list a glob pattern inside the
     `source` directory.
+  - `rename` - If provided, must contain `from` and `to` attributes. When specified, each file
+    is renamed as it is copied, where `from` is treated as a Python regular expression, and `to`
+    as the substitution string. Backreferences are available for capturing groups, e.g.
+    ```yaml
+      rename:
+        from: "(.*)\\.owl"
+        to: "\\g<1>{version}.owl"
+    ```
+    will add a version number to the base name of each `.owl` file.
   - `replace` - If provided, must contain `from` and `to` attributes. When specified, each file
     is processed after being copied, and each instance of the `from` string is replaced with `to`.
 - `move`, which moves files according the provided options, which are identical to the ones supported
@@ -175,7 +184,7 @@ one of the following values:
   - `source`, `target` and `includes`, which function just like they do for the `copy` and `move`
     actions, with each input and output path bound into the `inputFile` and `outputFile` variables
     before the tool arguments are interpreted.
-  - `replace`, which is applied after the tool invocation, and works as described above.
+  - `replace` and `rename`, which are applied after the tool invocation, and work as described above.
 - `markdown` transforms a `.md` file referenced in `source` into an HTML output specified in `target`.
 - `graph` reads RDF files provided via the `source` and `includes` options and generates a graphical
   representation of the ontology, as in the `graphic` sub-command described above. Both `.dot` and
