@@ -11,6 +11,7 @@ import subprocess
 import shutil
 import json
 import yaml
+from jsonschema import validate
 from rdflib import Graph, ConjunctiveGraph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
 from rdflib.util import guess_format
@@ -476,12 +477,18 @@ def bundleOntology(command_line_variables, bundle_path):
 
     """
     extension = os.path.splitext(bundle_path)[1]
-    with open(bundle_path, 'r') as b_stream:
+    schema_file = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)),
+        'bundle_schema.json')
+    with open(bundle_path, 'r') as b_stream, open(schema_file, 'r') as schema:
         if extension == '.yaml':
             bundle = yaml.safe_load(b_stream)
         else:
             # assume json regardless of extension
             bundle = json.load(b_stream)
+
+        # will throw ValidationError on failure
+        validate(bundle, json.load(schema))
 
     variables = VarDict()
     variables.update(bundle['variables'])
