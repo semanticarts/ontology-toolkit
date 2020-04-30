@@ -166,16 +166,21 @@ one of the following values:
     assumed to be directories, and each member of the `includes` list a glob pattern inside the
     `source` directory.
   - `rename` - If provided, must contain `from` and `to` attributes. When specified, each file
-    is renamed as it is copied, where `from` is treated as a Python regular expression, and `to`
-    as the substitution string. Backreferences are available for capturing groups, e.g.
+    is renamed as it is copied, where `from` is treated as a Python regular expression
+    applied to the base name of the source file, and `to` is the substitution string which
+    replaces it in the name of the target file. Backreferences are available for capturing groups, e.g.
     ```yaml
       rename:
         from: "(.*)\\.owl"
         to: "\\g<1>{version}.owl"
     ```
-    will add a version number to the base name of each `.owl` file.
+    will add a version number to the base name of each `.owl` file. Further documentation on
+    Python regular expression replace functionality can be found
+    [here](https://docs.python.org/3/howto/regex.html#search-and-replace).
   - `replace` - If provided, must contain `from` and `to` attributes. When specified, each file
-    is processed after being copied, and each instance of the `from` string is replaced with `to`.
+    is processed after being copied, and each instance of the `from` pattern is replaced
+    with `to` string in the file contents. Python regular expression syntax and backreferences are
+    supported as shown in the `rename` documentation.
 - `move`, which moves files according the provided options, which are identical to the ones supported
   by `copy`.
 - `transform`, which applies the specified tool to a set of input files, and supports the following

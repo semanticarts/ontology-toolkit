@@ -311,10 +311,10 @@ def serializeToOutputDir(tools, output, version, file):
     return outputFile
 
 
-def replaceStringInFile(file, from_string, to_string):
-    """Substitute version placeholder for actual version in file."""
+def replacePatternInFile(file, from_pattern, to_string):
+    """Replace regex pattern in file contents."""
     with open(file, 'r') as f:
-        replaced = f.read().replace(from_string, to_string)
+        replaced = re.compile(from_pattern).sub(to_string, f.read())
     with open(file, 'w') as f:
         f.write(replaced)
 
@@ -406,9 +406,9 @@ def __bundle_transform__(action, tools, variables):
         logging.debug('Running %s', interpreted_args)
         subprocess.run(interpreted_args)
         if 'replace' in action:
-            replaceStringInFile(in_out['outputFile'],
-                                action['replace']['from'].format(**invocation_vars),
-                                action['replace']['to'].format(**invocation_vars))
+            replacePatternInFile(in_out['outputFile'],
+                                 action['replace']['from'].format(**invocation_vars),
+                                 action['replace']['to'].format(**invocation_vars))
 
 
 def __bundle_copy__(action, variables):
@@ -417,9 +417,9 @@ def __bundle_copy__(action, variables):
         if isfile(in_out['inputFile']):
             shutil.copy(in_out['inputFile'], in_out['outputFile'])
             if 'replace' in action:
-                replaceStringInFile(in_out['outputFile'],
-                                    action['replace']['from'].format(**variables),
-                                    action['replace']['to'].format(**variables))
+                replacePatternInFile(in_out['outputFile'],
+                                     action['replace']['from'].format(**variables),
+                                     action['replace']['to'].format(**variables))
 
 
 def __bundle_move__(action, variables):
@@ -428,9 +428,9 @@ def __bundle_move__(action, variables):
         if isfile(in_out['inputFile']):
             shutil.move(in_out['inputFile'], in_out['outputFile'])
             if 'replace' in action:
-                replaceStringInFile(in_out['outputFile'],
-                                    action['replace']['from'].format(**variables),
-                                    action['replace']['to'].format(**variables))
+                replacePatternInFile(in_out['outputFile'],
+                                     action['replace']['from'].format(**variables),
+                                     action['replace']['to'].format(**variables))
 
 
 def __bundle_markdown__(action, variables):
