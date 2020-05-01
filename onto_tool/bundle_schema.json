@@ -1,15 +1,17 @@
 {
   "definitions": {
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
     "from_to": {
       "type": "object",
       "properties": {
         "from": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/definitions/non_empty_string"
         },
         "to": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/definitions/non_empty_string"
         }
       },
       "required": [
@@ -17,10 +19,6 @@
         "to"
       ],
       "additionalProperties": false
-    },
-    "non_empty_string": {
-      "type": "string",
-      "minLength": 1
     },
     "include_list": {
       "type": "array",
@@ -95,7 +93,28 @@
             },
             "minLength": 2
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "Java"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "jar": {
+                  "$ref": "#/definitions/non_empty_string"
+                }
+              },
+              "required": [
+                "jar"
+              ]
+            }
+          }
+        ]
       }
     },
     "actions": {
