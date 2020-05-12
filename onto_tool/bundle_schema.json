@@ -1,0 +1,268 @@
+{
+  "definitions": {
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "from_to": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/definitions/non_empty_string"
+        },
+        "to": {
+          "$ref": "#/definitions/non_empty_string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "additionalProperties": false
+    },
+    "include_list": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/non_empty_string"
+      },
+      "minLength": 1
+    },
+    "bulk_file_operation": {
+      "properties": {
+        "source": {
+          "$ref": "#/definitions/non_empty_string"
+        },
+        "target": {
+          "$ref": "#/definitions/non_empty_string"
+        },
+        "rename": {
+          "$ref": "#/definitions/from_to"
+        },
+        "replace": {
+          "$ref": "#/definitions/from_to"
+        },
+        "includes": {
+          "$ref": "#/definitions/include_list"
+        }
+      },
+      "required": [
+        "source",
+        "target"
+      ]
+    }
+  },
+  "type": "object",
+  "required": [
+    "bundle",
+    "actions"
+  ],
+  "properties": {
+    "bundle": {
+      "type": "string",
+      "minLength": 1
+    },
+    "variables": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "arguments"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/definitions/non_empty_string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "Java"
+            ]
+          },
+          "arguments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minLength": 2
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "Java"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "jar": {
+                  "$ref": "#/definitions/non_empty_string"
+                }
+              },
+              "required": [
+                "jar"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "mkdir",
+              "copy",
+              "move",
+              "transform",
+              "markdown",
+              "graph"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "graph"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "source": {
+                  "$ref": "#/definitions/non_empty_string"
+                },
+                "target": {
+                  "$ref": "#/definitions/non_empty_string"
+                },
+                "version": {
+                  "$ref": "#/definitions/non_empty_string"
+                },
+                "title": {
+                  "$ref": "#/definitions/non_empty_string"
+                }
+              },
+              "required": [
+                "title",
+                "version",
+                "source",
+                "target"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "markdown"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "source": {
+                  "$ref": "#/definitions/non_empty_string"
+                },
+                "target": {
+                  "$ref": "#/definitions/non_empty_string"
+                }
+              },
+              "required": [
+                "source",
+                "target"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "mkdir"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "directory": {
+                  "$ref": "#/definitions/non_empty_string"
+                }
+              },
+              "required": [
+                "directory"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "copy"
+                }
+              }
+            },
+            "then": {
+              "$ref": "#/definitions/bulk_file_operation"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "move"
+                }
+              }
+            },
+            "then": {
+              "$ref": "#/definitions/bulk_file_operation"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "transform"
+                }
+              }
+            },
+            "then": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/bulk_file_operation"
+                },
+                {
+                  "properties": {
+                    "tool": {
+                      "$ref": "#/definitions/non_empty_string"
+                    }
+                  },
+                  "required": [
+                    "tool"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

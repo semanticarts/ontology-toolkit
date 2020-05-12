@@ -19,7 +19,8 @@ setuptools.setup(
         'jinja2',
         'markdown',
         'mdx_smartypants',
-        'pyyaml'
+        'pyyaml',
+        'jsonschema'
     ],
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -27,6 +28,11 @@ setuptools.setup(
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
     ],
+    package_data={
+        'onto_tool': [
+            'bundle_schema.json'
+        ]
+    },
     entry_points={
         "console_scripts": [
             "onto_tool = onto_tool.onto_tool:run_tool"
