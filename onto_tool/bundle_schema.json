@@ -133,7 +133,8 @@
               "move",
               "transform",
               "markdown",
-              "graph"
+              "graph",
+              "definedBy"
             ]
           }
         },
@@ -228,6 +229,18 @@
               "properties": {
                 "action": {
                   "const": "move"
+                }
+              }
+            },
+            "then": {
+              "$ref": "#/definitions/bulk_file_operation"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "definedBy"
                 }
               }
             },

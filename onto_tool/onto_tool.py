@@ -189,7 +189,12 @@ def addDefinedBy(g, ontologyIRI):
     definitions = g.query(
         """
         SELECT distinct ?defined ?label ?defBy WHERE {
-          VALUES ?dtype { owl:Class owl:ObjectProperty owl:DatatypeProperty }
+          VALUES ?dtype {
+            owl:Class
+            owl:ObjectProperty
+            owl:DatatypeProperty
+            owl:AnnotationProperty
+          }
           ?defined a ?dtype ; skos:prefLabel|rdfs:label ?label .
           OPTIONAL { ?defined rdfs:isDefinedBy ?defBy }
         }
@@ -412,6 +417,37 @@ def __bundle_transform__(action, tools, variables):
                                  action['replace']['to'].format(**invocation_vars))
 
 
+def __bundle_defined_by__(action, variables):
+    logging.debug('Add definedBy %s', action)
+    for in_out in __bundle_file_list(action, variables):
+        g = Graph()
+        onto_file = in_out['inputFile']
+        rdf_format = guess_format(onto_file)
+        g.parse(onto_file, format=rdf_format)
+
+        # locate ontology
+        ontology = findSingleOntology(g, onto_file)
+        if not ontology:
+            logging.warning(f'Ignoring {onto_file}, no ontology found')
+            # copy as unchanged
+            shutil.copy(in_out['inputFile'], in_out['outputFile'])
+        else:
+            ontologyIRI = next(g.objects(ontology, OWL.ontologyIRI), None)
+            if ontologyIRI:
+                logging.debug(f'{ontologyIRI} found for {ontology}')
+            else:
+                ontologyIRI = ontology
+
+            addDefinedBy(g, ontologyIRI)
+
+            g.serialize(destination=in_out['outputFile'],
+                        format=rdf_format, encoding='utf-8')
+        if 'replace' in action:
+            replacePatternInFile(in_out['outputFile'],
+                                 action['replace']['from'].format(**variables),
+                                 action['replace']['to'].format(**variables))
+
+
 def __bundle_copy__(action, variables):
     logging.debug('Copy %s', action)
     for in_out in __bundle_file_list(action, variables):
@@ -510,6 +546,8 @@ def bundleOntology(command_line_variables, bundle_path):
             __bundle_markdown__(action, substituted)
         elif action['action'] == 'graph':
             __bundle_graph__(action, substituted)
+        elif action['action'] == 'definedBy':
+            __bundle_defined_by__(action, substituted)
         else:
             raise Exception('Unknown action ' + action)
 
