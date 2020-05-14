@@ -183,6 +183,11 @@ one of the following values:
     supported as shown in the `rename` documentation.
 - `move`, which moves files according the provided options, which are identical to the ones supported
   by `copy`.
+- `definedBy`, which inspects each input file to identify a single defined ontology, and then
+  adds a `rdfs:isDefinedBy` property to every `owl:Class`, `owl:ObjectProperty`, `owl:DatatypeProperty`
+  and `owl:AnnotationProperty` defined in the file referencing the identified ontology. Existing
+  `rdfs:isDefinedBy` values are removed prior to the addition. Input and output file specification
+  options are identical to those used by the `copy` action.
 - `transform`, which applies the specified tool to a set of input files, and supports the following
   arguments:
   - `tool`, which references the `name` of a tool which must be defined in the `tools` section.
