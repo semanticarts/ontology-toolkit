@@ -194,8 +194,14 @@ def addDefinedBy(g, ontologyIRI):
             owl:ObjectProperty
             owl:DatatypeProperty
             owl:AnnotationProperty
+            owl:Thing
           }
-          ?defined a ?dtype ; skos:prefLabel|rdfs:label ?label .
+          ?defined a ?dtype .
+          FILTER(!ISBLANK(?defined))
+          FILTER EXISTS {
+            ?defined ?anotherProp ?value .
+            FILTER (?anotherProp != rdf:type)
+          }
           OPTIONAL { ?defined rdfs:isDefinedBy ?defBy }
         }
         """,
@@ -353,8 +359,8 @@ def generateGraphic(fileRefs, compact, output, version):
     """
     allFiles = [file for ref in fileRefs for file in expandFileRef(ref)]
     og = OntoGraf(allFiles, outpath=output, wee=compact, version=version)
-    og.gatherInfo()
-    og.createGraf()
+    og.gather_info()
+    og.create_graf()
 
 
 class VarDict(dict):
@@ -492,8 +498,8 @@ def __bundle_graph__(action, variables):
     compact = action['compact'] if 'compact' in action else False
     og = OntoGraf([f['inputFile'] for f in __bundle_file_list(action, variables)],
                   outpath=documentation, wee=compact, title=title, version=version)
-    og.gatherInfo()
-    og.createGraf()
+    og.gather_info()
+    og.create_graf()
 
 
 def bundleOntology(command_line_variables, bundle_path):
@@ -558,7 +564,7 @@ def exportOntology(args, output_format):
     Optionally, strips dependency versions and merges ontologies into
     a single new ontology.
     """
-    if 'context' in args:
+    if 'context' in args and args.context:
         g = ConjunctiveGraph()
         parse_graph = g.get_context(args.context)
         output_format = 'nquads'
