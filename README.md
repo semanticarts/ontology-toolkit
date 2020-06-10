@@ -32,33 +32,9 @@ optional arguments:
 The `update` sub-command modifies ontology version and dependency information
 ```
 $ onto_tool update -h
-usage: onto_tool update [-h] [-b] [-v SET_VERSION]
-                        [-i [VERSION_INFO]] [-d DEPENDENCY VERSION]
-                        [ontology [ontology ...]]
-
-positional arguments:
-  ontology              Ontology file or directory containing OWL files.
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -b, --defined-by      Add rdfs:isDefinedBy to every resource defined.
-  -v SET_VERSION, --set-version SET_VERSION
-                        Set the version of the defined ontology
-  -i [VERSION_INFO], --version-info [VERSION_INFO]
-                        Adjust versionInfo, defaults to "Version X.x.x
-  -d DEPENDENCY VERSION, --dependency-version DEPENDENCY VERSION
-                        Update the import of DEPENDENCY to VERSION
-  -o {xml,turtle,nt}, --output-format {xml,turtle,nt}
-                        Output format
-```
-
-### Export
-
-The `export` sub-command will transform the ontology into the desired format, and remove version information, as required by tools such as Top Braid Composer.
-```
-$ onto_tool export -h
-usage: onto_tool export [-h] [-o {xml,turtle,nt} | -c CONTEXT] [-s]
-                        [-m IRI VERSION]
+usage: onto_tool update [-h] [-f {xml,turtle,nt} | -i] [-o OUTPUT] [-b]
+                        [-v SET_VERSION] [--version-info [VERSION_INFO]]
+                        [-d DEPENDENCY VERSION]
                         [ontology [ontology ...]]
 
 positional arguments:
@@ -66,10 +42,42 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  -o {xml,turtle,nt}, --output-format {xml,turtle,nt}
+  -f {xml,turtle,nt}, --format {xml,turtle,nt}
+                        Output format
+  -i, --in-place        Overwrite each input file with update, preserving
+                        format
+  -o OUTPUT, --output OUTPUT
+                        Path to output file. Will be ignored if --in-place is
+                        specified.
+  -b, --defined-by      Add rdfs:isDefinedBy to every resource defined.
+  -v SET_VERSION, --set-version SET_VERSION
+                        Set the version of the defined ontology
+  --version-info [VERSION_INFO]
+                        Adjust versionInfo, defaults to "Version X.x.x
+  -d DEPENDENCY VERSION, --dependency-version DEPENDENCY VERSION
+                        Update the import of DEPENDENCY to VERSION
+```
+
+### Export
+
+The `export` sub-command will transform the ontology into the desired format, and remove version information, as required by tools such as Top Braid Composer.
+```
+$ onto_tool export -h
+usage: onto_tool export [-h] [-f {xml,turtle,nt} | -c CONTEXT] [-o OUTPUT]
+                        [-s] [-m IRI VERSION]
+                        [ontology [ontology ...]]
+
+positional arguments:
+  ontology              Ontology file or directory containing OWL files
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -f {xml,turtle,nt}, --format {xml,turtle,nt}
                         Output format
   -c CONTEXT, --context CONTEXT
                         Export as N-Quads in CONTEXT.
+  -o OUTPUT, --output OUTPUT
+                        Path to output file.
   -s, --strip-versions  Remove versions from imports.
   -m IRI VERSION, --merge IRI VERSION
                         Merge all inputs into a single ontology with the given

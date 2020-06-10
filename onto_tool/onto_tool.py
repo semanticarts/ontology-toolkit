@@ -28,7 +28,7 @@ def _uri_validator(x):
     """Check for valid URI."""
     try:
         result = urlparse(x)
-        return all([result.scheme, result.netloc, result.path])
+        return all([result.scheme, any([result.netloc, result.path])])
     except ValueError:
         return False
 
@@ -70,15 +70,26 @@ def configureArgParser():
 
     update_parser = subparsers.add_parser('update',
                                           help='Update versions and dependencies')
-    update_parser.add_argument('-o', '--output-format', action='store',
-                               default='turtle',
-                               choices=['xml', 'turtle', 'nt'],
-                               help='Output format')
+
+    output_format_group = update_parser.add_mutually_exclusive_group()
+    output_format_group.add_argument(
+        '-f', '--format', action='store',
+        default='turtle', choices=['xml', 'turtle', 'nt'],
+        help='Output format')
+    output_format_group.add_argument(
+        '-i', '--in-place', action="store_true",
+        help="Overwrite each input file with update, preserving format")
+
+    update_parser.add_argument('-o', '--output',
+                               type=argparse.FileType('w', encoding='utf-8'),
+                               default=sys.stdout,
+                               help='Path to output file. Will be ignored if '
+                               '--in-place is specified.')
     update_parser.add_argument('-b', '--defined-by', action="store_true",
                                help='Add rdfs:isDefinedBy to every resource defined.')
     update_parser.add_argument('-v', '--set-version', action="store",
                                help='Set the version of the defined ontology')
-    update_parser.add_argument('-i', '--version-info', action="store",
+    update_parser.add_argument('--version-info', action="store",
                                nargs='?', const='auto',
                                help='Adjust versionInfo, defaults to "Version X.x.x')
     update_parser.add_argument('-d', '--dependency-version', action="append",
@@ -91,13 +102,17 @@ def configureArgParser():
     export_parser = subparsers.add_parser('export', help='Export ontology')
 
     format_parser = export_parser.add_mutually_exclusive_group()
-    format_parser.add_argument('-o', '--output-format', action='store',
+    format_parser.add_argument('-f', '--format', action='store',
                                default='turtle',
                                choices=['xml', 'turtle', 'nt'],
                                help='Output format')
     format_parser.add_argument('-c', '--context', action=UriValidator,
                                help='Export as N-Quads in CONTEXT.')
 
+    export_parser.add_argument('-o', '--output',
+                               type=argparse.FileType('w', encoding='utf-8'),
+                               default=sys.stdout,
+                               help='Path to output file.')
     export_parser.add_argument('-s', '--strip-versions', action="store_true",
                                help='Remove versions from imports.')
     export_parser.add_argument('-m', '--merge', action=OntologyUriValidator, nargs=2,
@@ -581,14 +596,17 @@ def exportOntology(args, output_format):
 
     if 'merge' in args and args.merge:
         cleanMergeArtifacts(parse_graph, URIRef(args.merge[0]), args.merge[1])
-    print(g.serialize(format=output_format).decode('utf-8'))
+
+    serialized = g.serialize(format=output_format)
+    args.output.write(serialized.decode(args.output.encoding))
 
 
 def updateOntology(args, output_format):
     """Maintenance updates for ontology files."""
     for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
         g = Graph()
-        g.parse(onto_file, format=guess_format(onto_file))
+        orig_format = guess_format(onto_file)
+        g.parse(onto_file, format=orig_format)
         logging.debug(f'{onto_file} has {len(g)} triples')
 
         # locate ontology
@@ -630,7 +648,14 @@ def updateOntology(args, output_format):
             stripVersions(g, ontology)
 
         # Output
-        print(g.serialize(format=output_format).decode('utf-8'))
+        if args.in_place:
+            adjusted_format = 'pretty-xml' if orig_format == 'xml' else orig_format
+            g.serialize(destination=onto_file,
+                        format=adjusted_format,
+                        encoding='utf-8')
+        else:
+            serialized = g.serialize(format=output_format)
+            args.output.write(serialized.decode(args.output.encoding))
 
 
 def main(arguments):
@@ -647,7 +672,7 @@ def main(arguments):
         generateGraphic(args.ontology, args.wee, args.output, args.version)
         return
 
-    of = 'pretty-xml' if args.output_format == 'xml' else args.output_format
+    of = 'pretty-xml' if args.format == 'xml' else args.format
 
     if args.command == 'export':
         exportOntology(args, of)

@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="onto_tool",
-    version="0.5.0",
+    version="0.6.0",
     author="Boris Pelakh",
     author_email="boris.pelakh@semanticarts.com",
     description="Ontology Maintenance and Release Tool",
@@ -14,7 +14,7 @@ setuptools.setup(
     url="https://github.com/semanticarts/ontology-toolkit",
     packages=setuptools.find_packages(),
     install_requires=[
-        'rdflib',
+        'rdflib>=5.0.0',
         'pydot',
         'jinja2',
         'markdown',
