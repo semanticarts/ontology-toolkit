@@ -53,7 +53,7 @@ optional arguments:
   -v SET_VERSION, --set-version SET_VERSION
                         Set the version of the defined ontology
   --version-info [VERSION_INFO]
-                        Adjust versionInfo, defaults to "Version X.x.x
+                        Adjust versionInfo, defaults to "Version X.x.x"
   -d DEPENDENCY VERSION, --dependency-version DEPENDENCY VERSION
                         Update the import of DEPENDENCY to VERSION
 ```

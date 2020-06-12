@@ -91,7 +91,7 @@ def configureArgParser():
                                help='Set the version of the defined ontology')
     update_parser.add_argument('--version-info', action="store",
                                nargs='?', const='auto',
-                               help='Adjust versionInfo, defaults to "Version X.x.x')
+                               help='Adjust versionInfo, defaults to "Version X.x.x"')
     update_parser.add_argument('-d', '--dependency-version', action="append",
                                metavar=('DEPENDENCY', 'VERSION'),
                                nargs=2, default=[],
