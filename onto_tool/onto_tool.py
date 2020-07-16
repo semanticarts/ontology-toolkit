@@ -119,6 +119,15 @@ def configureArgParser():
                                metavar=('IRI', 'VERSION'),
                                help='Merge all inputs into a single ontology'
                                ' with the given IRI and version')
+    export_parser.add_argument('-b', '--defined-by', action="store",
+                               nargs="?", const='strict',
+                               choices=['all', 'strict'],
+                               help='Add rdfs:isDefinedBy to every resource defined. '
+                               'If the (default) "strict" argument is provided, only '
+                               'owl:Class, owl:ObjectProperty, owl:DatatypeProperty, '
+                               'owl:AnnotationProperty and owl:Thing entities will be '
+                               'annotated. If "all" is provided, every entity that has '
+                               'any properties other than rdf:type will be annotated.')
     export_parser.add_argument('ontology', nargs="*", default=[],
                                help="Ontology file or directory containing OWL files")
 
@@ -199,19 +208,22 @@ def setVersionInfo(g, ontology, versionInfo):
     logging.debug(f'versionInfo "{versionInfo}" added for {ontology}')
 
 
-def addDefinedBy(g, ontologyIRI):
+def addDefinedBy(g, ontologyIRI, mode='strict'):
     """Add rdfs:isDefinedBy to every entity declared by the ontology."""
-    definitions = g.query(
+    if mode == 'strict':
+        selector = """
+          FILTER(?dtype IN (
+            owl:Class, owl:ObjectProperty, owl:DatatypeProperty,
+            owl:AnnotationProperty, owl:Thing
+          ))
         """
+    else:
+        selector = "FILTER(?dtype != owl:Ontology)"
+
+    query = """
         SELECT distinct ?defined ?label ?defBy WHERE {
-          VALUES ?dtype {
-            owl:Class
-            owl:ObjectProperty
-            owl:DatatypeProperty
-            owl:AnnotationProperty
-            owl:Thing
-          }
           ?defined a ?dtype .
+          %s
           FILTER(!ISBLANK(?defined))
           FILTER EXISTS {
             ?defined ?anotherProp ?value .
@@ -219,7 +231,9 @@ def addDefinedBy(g, ontologyIRI):
           }
           OPTIONAL { ?defined rdfs:isDefinedBy ?defBy }
         }
-        """,
+        """ % selector
+    definitions = g.query(
+        query,
         initNs={'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
     for d in definitions:
         if d.defBy:
@@ -297,13 +311,16 @@ def cleanMergeArtifacts(g, iri, version):
         i for i in g.objects(subject=None, predicate=OWL.imports)
         if not versionSensitiveMatch(i, ontologies))
     for o in ontologies:
+        logging.debug(f'Removing existing ontology {o}')
         for t in list(g.triples((o, None, None))):
             g.remove(t)
+    logging.debug(f'Creating new ontology {iri}:{version}')
     g.add((iri, RDF.type, OWL.Ontology))
     g.add((iri, OWL.ontologyIRI, iri))
     g.add((iri, OWL.versionIRI, URIRef(str(iri) + version)))
     g.add((iri, OWL.versionInfo, Literal("Created by merge tool.", datatype=XSD.string)))
     for i in externalImports:
+        logging.debug(f'Transferring external dependency {i} to {iri}')
         g.add((iri, OWL.imports, i))
 
 
@@ -596,6 +613,13 @@ def exportOntology(args, output_format):
 
     if 'merge' in args and args.merge:
         cleanMergeArtifacts(parse_graph, URIRef(args.merge[0]), args.merge[1])
+
+    # Add rdfs:isDefinedBy
+    if 'defined_by' in args and args.defined_by:
+        ontologyIRI = findSingleOntology(parse_graph, 'merged graph')
+        if ontologyIRI is None:
+            return
+        addDefinedBy(parse_graph, ontologyIRI, args.defined_by)
 
     serialized = g.serialize(format=output_format)
     args.output.write(serialized.decode(args.output.encoding))

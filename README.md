@@ -64,7 +64,7 @@ The `export` sub-command will transform the ontology into the desired format, an
 ```
 $ onto_tool export -h
 usage: onto_tool export [-h] [-f {xml,turtle,nt} | -c CONTEXT] [-o OUTPUT]
-                        [-s] [-m IRI VERSION]
+                        [-s] [-m IRI VERSION] [-b [{all,strict}]]
                         [ontology [ontology ...]]
 
 positional arguments:
@@ -82,6 +82,13 @@ optional arguments:
   -m IRI VERSION, --merge IRI VERSION
                         Merge all inputs into a single ontology with the given
                         IRI and version
+  -b [{all,strict}], --defined-by [{all,strict}]
+                        Add rdfs:isDefinedBy to every resource defined. If the
+                        (default) "strict" argument is provided, only
+                        owl:Class, owl:ObjectProperty, owl:DatatypeProperty,
+                        owl:AnnotationProperty and owl:Thing entities will be
+                        annotated. If "all" is provided, every entity that has
+                        any properties other than rdf:type will be annotated.
 ```
 
 ### Graphic
