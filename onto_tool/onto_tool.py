@@ -208,7 +208,7 @@ def setVersionInfo(g, ontology, versionInfo):
     logging.debug(f'versionInfo "{versionInfo}" added for {ontology}')
 
 
-def addDefinedBy(g, ontologyIRI, mode='strict'):
+def addDefinedBy(g, ontologyIRI, mode='strict', replace=False):
     """Add rdfs:isDefinedBy to every entity declared by the ontology."""
     if mode == 'strict':
         selector = """
@@ -240,8 +240,13 @@ def addDefinedBy(g, ontologyIRI, mode='strict'):
             if d.defBy == ontologyIRI:
                 logging.debug(f'{d.defined} already defined by {ontologyIRI}')
             else:
-                logging.warning(f'{d.defined} defined by {d.defBy}'
-                                f' instead of {ontologyIRI}')
+                if replace:
+                    logging.debug(f'Replaced definedBy for {d.defined} to {ontologyIRI}')
+                    g.remove((d.defined, RDFS.isDefinedBy, d.defBy))
+                    g.add((d.defined, RDFS.isDefinedBy, ontologyIRI))
+                else:
+                    logging.warning(f'{d.defined} defined by {d.defBy}'
+                                    f' instead of {ontologyIRI}')
         else:
             logging.debug(f'Added definedBy to {d.defined}')
             g.add((d.defined, RDFS.isDefinedBy, ontologyIRI))
@@ -296,20 +301,21 @@ def stripVersions(g, ontology=None):
                 g.add((o, OWL.imports, URIRef(match.group(1))))
 
 
-def versionSensitiveMatch(reference, ontologies):
+def versionSensitiveMatch(reference, ontologies, versions):
     """Check if reference is in ontologies, ignoring version."""
     match = re.match(r'^(.*?)((\d+|[Xx])\.(\d+|[Xx])\.(\d+|[Xx]))?$',
                      str(reference))
     refWithoutVersion = match.group(1)
-    return URIRef(refWithoutVersion) in ontologies
+    return URIRef(refWithoutVersion) in ontologies or reference in versions
 
 
 def cleanMergeArtifacts(g, iri, version):
     """Remove all existing ontology declaration, replace with new merged ontology."""
     ontologies = set(g.subjects(RDF.type, OWL.Ontology))
+    versions = set(v for o in ontologies for v in g.objects(o, OWL.versionIRI))
     externalImports = list(
         i for i in g.objects(subject=None, predicate=OWL.imports)
-        if not versionSensitiveMatch(i, ontologies))
+        if not versionSensitiveMatch(i, ontologies, versions))
     for o in ontologies:
         logging.debug(f'Removing existing ontology {o}')
         for t in list(g.triples((o, None, None))):
@@ -619,7 +625,8 @@ def exportOntology(args, output_format):
         ontologyIRI = findSingleOntology(parse_graph, 'merged graph')
         if ontologyIRI is None:
             return
-        addDefinedBy(parse_graph, ontologyIRI, args.defined_by)
+        addDefinedBy(parse_graph, ontologyIRI,
+                     mode=args.defined_by, replace=True)
 
     serialized = g.serialize(format=output_format)
     args.output.write(serialized.decode(args.output.encoding))
