@@ -128,6 +128,9 @@ def configureArgParser():
                                'owl:AnnotationProperty and owl:Thing entities will be '
                                'annotated. If "all" is provided, every entity that has '
                                'any properties other than rdf:type will be annotated.')
+    export_parser.add_argument('--retain-definedBy', action="store_true",
+                               help='When merging ontologies, retain existing values '
+                               'of rdfs:isDefinedBy')
     export_parser.add_argument('ontology', nargs="*", default=[],
                                help="Ontology file or directory containing OWL files")
 
@@ -626,7 +629,7 @@ def exportOntology(args, output_format):
         if ontologyIRI is None:
             return
         addDefinedBy(parse_graph, ontologyIRI,
-                     mode=args.defined_by, replace=True)
+                     mode=args.defined_by, replace=not args.retain_definedBy)
 
     serialized = g.serialize(format=output_format)
     args.output.write(serialized.decode(args.output.encoding))
