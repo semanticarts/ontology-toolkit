@@ -409,10 +409,41 @@ def __perform_export__(output, output_format, paths, context=None,
                        strip_versions=False,
                        merge=None,
                        defined_by=None, retain_defined_by=False):
-    """Export one or more files as a single output.
+    """
+    Export one or more files as a single output.
 
-    Optionally, strips dependency versions and merges ontologies into
-    a single new ontology.
+    Parameters
+    ----------
+    output: writable stream
+        Destination for combined RDF.
+    output_format: string
+        Serialization format (turtle, nt, xml)
+    paths: list
+        List of file paths of RDF resources to combine for this export.
+    context: string, optional
+        If specified, place the exported RDF in the named graph. Output
+        format is set to nquads, ignoring the output_format argument.
+    merge: tuple, optional
+        If a (iri, version) tuple is provided, all owl:Ontology entities
+        in the combined graph are removed, and replaced with a single Ontology
+        entity with the provided IRI and version.
+    defined_by : string, optional
+        Creates rdfs:isDefinedBy links for entities declared in the graph
+        to the Ontology. If there is either no owl:Ontology defined, or if
+        there are multiple ontologies defined, this step will fail.
+        If 'strict' is specified, links are added only to owl:Class,
+        owl:DatatypeProperty, owl:ObjectProperty and owl:AnnotationProperty
+        instances. If 'all' is specified, every entity in the graph is
+        annotated.
+    retain_defined_by : boolean, optional
+        The default (False) functionality is to replace any existing
+        rdfs:isDefinedBy annotations with a reference to the new ontology.
+        If True, however, existing rdfs:isDefinedBy values are left in place.
+
+    Returns
+    -------
+    None.
+
     """
     if context:
         g = ConjunctiveGraph()
@@ -631,6 +662,7 @@ def __bundle_export__(action, variables):
         output = open(action['target'].format(**variables), 'w', encoding="utf-8")
 
     o_format = action['format'].format(**variables) if 'format' in action else 'turtle'
+    o_format = 'pretty-xml' if o_format == 'xml' else o_format
 
     context = action['context'].format(**variables) if 'context' in action else None
 
