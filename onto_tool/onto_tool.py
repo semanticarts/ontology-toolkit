@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import re
 import subprocess
 import shutil
+import gzip
 import json
 import yaml
 from jsonschema import validate
@@ -404,6 +405,76 @@ def generateGraphic(fileRefs, compact, output, version):
     og.create_graf()
 
 
+def __perform_export__(output, output_format, paths, context=None,
+                       strip_versions=False,
+                       merge=None,
+                       defined_by=None, retain_defined_by=False):
+    """
+    Export one or more files as a single output.
+
+    Parameters
+    ----------
+    output: writable stream
+        Destination for combined RDF.
+    output_format: string
+        Serialization format (turtle, nt, xml)
+    paths: list
+        List of file paths of RDF resources to combine for this export.
+    context: string, optional
+        If specified, place the exported RDF in the named graph. Output
+        format is set to nquads, ignoring the output_format argument.
+    merge: tuple, optional
+        If a (iri, version) tuple is provided, all owl:Ontology entities
+        in the combined graph are removed, and replaced with a single Ontology
+        entity with the provided IRI and version.
+    defined_by : string, optional
+        Creates rdfs:isDefinedBy links for entities declared in the graph
+        to the Ontology. If there is either no owl:Ontology defined, or if
+        there are multiple ontologies defined, this step will fail.
+        If 'strict' is specified, links are added only to owl:Class,
+        owl:DatatypeProperty, owl:ObjectProperty and owl:AnnotationProperty
+        instances. If 'all' is specified, every entity in the graph is
+        annotated.
+    retain_defined_by : boolean, optional
+        The default (False) functionality is to replace any existing
+        rdfs:isDefinedBy annotations with a reference to the new ontology.
+        If True, however, existing rdfs:isDefinedBy values are left in place.
+
+    Returns
+    -------
+    None.
+
+    """
+    if context:
+        g = ConjunctiveGraph()
+        parse_graph = g.get_context(context)
+        output_format = 'nquads'
+    else:
+        g = Graph()
+        parse_graph = g
+
+    for onto_file in [file for ref in paths for file in expandFileRef(ref)]:
+        parse_graph.parse(onto_file, format=guess_format(onto_file))
+
+    # Remove dep versions
+    if strip_versions:
+        stripVersions(parse_graph)
+
+    if merge:
+        cleanMergeArtifacts(parse_graph, URIRef(merge[0]), merge[1])
+
+    # Add rdfs:isDefinedBy
+    if defined_by:
+        ontologyIRI = findSingleOntology(parse_graph, 'merged graph')
+        if ontologyIRI is None:
+            return
+        addDefinedBy(parse_graph, ontologyIRI,
+                     mode=defined_by, replace=not retain_defined_by)
+
+    serialized = g.serialize(format=output_format)
+    output.write(serialized.decode(output.encoding))
+
+
 class VarDict(dict):
     """Dict that performs variable substitution on values."""
 
@@ -417,24 +488,53 @@ class VarDict(dict):
         return template.format(**self)
 
 
-def __bundle_file_list(action, variables):
+def __bundle_file_list(action, variables, single_target=False):
+    """
+    Expand a source/target/includes spec into a list of inputFile/outputFile pairs.
+
+    If single_target is specified, renaming is ignored and target is
+    treated as single file path.
+
+    Otherwise, target is assumed to be a directory, which is created if
+    it does not exist.
+
+    Parameters
+    ----------
+    action : dict
+        Action definition which contains source, target and (optionally)
+        an includes list of patterns.
+    variables : dict
+        Current variable values to use in substitution.
+    single_target : bool, optional
+        If True, only generate input list.
+
+    Yields
+    ------
+    dict
+        Containes 'inputFile' and 'outputFile' unless single_target
+        is specifed.
+
+    """
     if 'includes' in action:
         # source and target are directories, apply glob
         src_dir = action['source'].format(**variables)
         tgt_dir = action['target'].format(**variables)
-        if not isdir(tgt_dir):
+        if not single_target and not isdir(tgt_dir):
             os.mkdir(tgt_dir)
         for pattern in action['includes']:
             for input_file in glob(os.path.join(src_dir, pattern)):
-                if 'rename' in action:
-                    from_pattern = re.compile(
-                        action['rename']['from'].format(**variables))
-                    to_pattern = action['rename']['to'].format(**variables)
-                    output_file = from_pattern.sub(
-                        to_pattern,
-                        os.path.basename(input_file))
+                if single_target:
+                    output_file = tgt_dir
                 else:
-                    output_file = os.path.basename(input_file)
+                    if 'rename' in action:
+                        from_pattern = re.compile(
+                            action['rename']['from'].format(**variables))
+                        to_pattern = action['rename']['to'].format(**variables)
+                        output_file = from_pattern.sub(
+                            to_pattern,
+                            os.path.basename(input_file))
+                    else:
+                        output_file = os.path.basename(input_file)
                 yield dict(inputFile=input_file,
                            outputFile=os.path.join(tgt_dir, output_file))
     else:
@@ -543,6 +643,51 @@ def __bundle_graph__(action, variables):
     og.create_graf()
 
 
+def __boolean_option__(action, key, variables):
+    if key not in action:
+        return False
+    value = action[key]
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    return str(value.format(**variables)).lower() in ("yes", "true", "t", "1")
+
+
+def __bundle_export__(action, variables):
+    logging.debug('Export %s', action)
+    if __boolean_option__(action, 'compress', variables):
+        output = gzip.open(action['target'].format(**variables), 'wt', encoding="utf-8")
+    else:
+        output = open(action['target'].format(**variables), 'w', encoding="utf-8")
+
+    o_format = action['format'].format(**variables) if 'format' in action else 'turtle'
+    o_format = 'pretty-xml' if o_format == 'xml' else o_format
+
+    context = action['context'].format(**variables) if 'context' in action else None
+
+    merge = None
+    if 'merge' in action:
+        merge = (action['merge']['iri'], action['merge']['version'])
+
+    paths = list(f['inputFile']
+                 for f in __bundle_file_list(action, variables, single_target=True))
+
+    defined_by = None
+    if 'definedBy' in action:
+        defined_by = action['definedBy'].format(**variables)
+
+    __perform_export__(output, o_format,
+                       paths,
+                       context,
+                       __boolean_option__(action, 'stripVersions', variables),
+                       merge,
+                       defined_by,
+                       __boolean_option__(action, 'retainDefinedBy', variables))
+
+    output.close()
+
+
 def bundleOntology(command_line_variables, bundle_path):
     """
     Bundle ontology and related artifacts for release.
@@ -595,6 +740,8 @@ def bundleOntology(command_line_variables, bundle_path):
             __bundle_graph__(action, substituted)
         elif action['action'] == 'definedBy':
             __bundle_defined_by__(action, substituted)
+        elif action['action'] == 'export':
+            __bundle_export__(action, substituted)
         else:
             raise Exception('Unknown action ' + action)
 
@@ -605,34 +752,15 @@ def exportOntology(args, output_format):
     Optionally, strips dependency versions and merges ontologies into
     a single new ontology.
     """
-    if 'context' in args and args.context:
-        g = ConjunctiveGraph()
-        parse_graph = g.get_context(args.context)
-        output_format = 'nquads'
-    else:
-        g = Graph()
-        parse_graph = g
+    context = args.context if 'context' in args and args.context else None
+    defined_by = args.defined_by if 'defined_by' in args and args.defined_by else None
 
-    for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
-        parse_graph.parse(onto_file, format=guess_format(onto_file))
-
-    # Remove dep versions
-    if 'strip_versions' in args and args.strip_versions:
-        stripVersions(parse_graph)
-
-    if 'merge' in args and args.merge:
-        cleanMergeArtifacts(parse_graph, URIRef(args.merge[0]), args.merge[1])
-
-    # Add rdfs:isDefinedBy
-    if 'defined_by' in args and args.defined_by:
-        ontologyIRI = findSingleOntology(parse_graph, 'merged graph')
-        if ontologyIRI is None:
-            return
-        addDefinedBy(parse_graph, ontologyIRI,
-                     mode=args.defined_by, replace=not args.retain_definedBy)
-
-    serialized = g.serialize(format=output_format)
-    args.output.write(serialized.decode(args.output.encoding))
+    __perform_export__(args.output, output_format, args.ontology,
+                       context,
+                       'strip_versions' in args and args.strip_versions,
+                       args.merge if 'merge' in args and args.merge else None,
+                       defined_by,
+                       args.retain_definedBy)
 
 
 def updateOntology(args, output_format):

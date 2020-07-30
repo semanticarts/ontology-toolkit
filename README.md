@@ -62,9 +62,9 @@ optional arguments:
 
 The `export` sub-command will transform the ontology into the desired format, and remove version information, as required by tools such as Top Braid Composer.
 ```
-$ onto_tool export -h
 usage: onto_tool export [-h] [-f {xml,turtle,nt} | -c CONTEXT] [-o OUTPUT]
                         [-s] [-m IRI VERSION] [-b [{all,strict}]]
+                        [--retain-definedBy]
                         [ontology [ontology ...]]
 
 positional arguments:
@@ -89,6 +89,8 @@ optional arguments:
                         owl:AnnotationProperty and owl:Thing entities will be
                         annotated. If "all" is provided, every entity that has
                         any properties other than rdf:type will be annotated.
+  --retain-definedBy    When merging ontologies, retain existing values of
+                        rdfs:isDefinedBy
 ```
 
 ### Graphic
@@ -203,6 +205,28 @@ one of the following values:
   and `owl:AnnotationProperty` defined in the file referencing the identified ontology. Existing
   `rdfs:isDefinedBy` values are removed prior to the addition. Input and output file specification
   options are identical to those used by the `copy` action.
+- `export`, which functions similarly to the command-line export functionality, gathering one or
+  more input ontologies and exporting them as a single file, with some optional transformations,
+  depending on the following specified options:
+  - `source`, `target` and `includes` - if `includes` is not present, `source` and `target` are both
+    assumed to be file paths to a single file. If `includes` is provided, `source` is 
+    assumed to be a directory, and each member of the `includes` list a glob pattern inside the
+    `source` directory. `target` is always treated as a single file path.
+  - `merge` - if provided, it must have two mandatory fields, `iri` and `version`. In this case, all
+    ontologies declared in the input files are removed, and a single new ontologies, specified by the 
+    `iri` is created, using `version` to build `owl:versionInfo` and `owl:versionIRI`. Any imports on
+    the removed ontologies which are not satisfied internally are transferred to the new ontology.
+  - `definedBy` - has two possible values, `strict` and `all`. If provided, a `rdfs:isDefinedBy` is
+    added to all non-blank node subjects in the exported RDF linking them to the ontology defined in the
+    combined graph. If more that one ontology is defined, the export will fail. If `strict` is specified,
+    only classes and properties will be annotated, whereas `all` does not filter by type.
+  - `retainDefinedBy` - by default, `definedBy` will override any existing `rdfs:definedBy` annotations,
+    but if this option is provided, existing annotations will be left in place.
+  - `format` - One of `turtle`, `xml`, or `nt` (N-Triples), specifies the output format for the export.
+    The default output format is `turtle`.
+  - `context` - If provided, generates a N-Quads export with the `context` argument as the name of the
+    graph. When this option is present, the value of `format` is ignored.
+  - `compress` - when this is `true`, the output is `gzip`-ed.
 - `transform`, which applies the specified tool to a set of input files, and supports the following
   arguments:
   - `tool`, which references the `name` of a tool which must be defined in the `tools` section.

@@ -20,6 +20,22 @@
       ],
       "additionalProperties": false
     },
+    "onto_version": {
+      "type": "object",
+      "properties": {
+        "iri": {
+          "$ref": "#/definitions/non_empty_string"
+        },
+        "version": {
+          "$ref": "#/definitions/non_empty_string"
+        }
+      },
+      "required": [
+        "iri",
+        "version"
+      ],
+      "additionalProperties": false
+    },
     "include_list": {
       "type": "array",
       "items": {
@@ -134,7 +150,8 @@
               "transform",
               "markdown",
               "graph",
-              "definedBy"
+              "definedBy",
+              "export"
             ]
           }
         },
@@ -246,6 +263,56 @@
             },
             "then": {
               "$ref": "#/definitions/bulk_file_operation"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "export"
+                }
+              }
+            },
+            "then": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/bulk_file_operation"
+                },
+                {
+                  "properties": {
+                    "merge": {
+                      "$ref": "#/definitions/onto_version"
+                    },
+                    "context": {
+                      "$ref": "#/definitions/non_empty_string"
+                    },
+                    "definedBy": {
+                      "type": "string",
+                      "enum": [
+                        "strict",
+                        "all"
+                      ]
+                    },
+                    "retainDefinedBy": {
+                      "type": "boolean"
+                    },
+                    "stripVersions": {
+                      "type": "boolean"
+                    },
+                    "compress": {
+                      "type": "boolean"
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "turtle",
+                        "xml",
+                        "nt"
+                      ]
+                    }
+                  }
+                }
+              ]
             }
           },
           {
