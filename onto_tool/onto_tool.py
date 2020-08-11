@@ -844,7 +844,7 @@ def main(arguments):
 
 def run_tool():
     """Entry point for executable script."""
-    main(sys.argv[1:])
+    main(sys.argv[1:] if len(sys.argv) > 1 else ['-h'])
 
 
 if __name__ == '__main__':
