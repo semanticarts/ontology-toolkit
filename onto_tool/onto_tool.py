@@ -41,6 +41,7 @@ class UriValidator(argparse.Action):
     # pylint: disable=R0903
     def __call__(self, parser, namespace, values, option_string=None):
         """First argument is a valid URI, 2nd a valid semantic version."""
+        iri = None
         if _uri_validator(values):
             iri = URIRef(values)
         else:
@@ -55,6 +56,7 @@ class OntologyUriValidator(argparse.Action):
     # pylint: disable=R0903
     def __call__(self, parser, namespace, values, option_string=None):
         """First argument is a valid URI, 2nd a valid semantic version."""
+        iri = None
         if _uri_validator(values[0]):
             iri = URIRef(values[0])
         else:
@@ -64,7 +66,7 @@ class OntologyUriValidator(argparse.Action):
         setattr(namespace, self.dest, [iri, values[1]])
 
 
-def configureArgParser():
+def configure_arg_parser():
     """Configure command line parser."""
     parser = argparse.ArgumentParser(description='Ontology toolkit.')
     subparsers = parser.add_subparsers(help='sub-command help', dest='command')
@@ -86,8 +88,17 @@ def configureArgParser():
                                default=sys.stdout,
                                help='Path to output file. Will be ignored if '
                                '--in-place is specified.')
-    update_parser.add_argument('-b', '--defined-by', action="store_true",
-                               help='Add rdfs:isDefinedBy to every resource defined.')
+    update_parser.add_argument('-b', '--defined-by', action="store",
+                               nargs="?", const='strict',
+                               choices=['all', 'strict'],
+                               help='Add rdfs:isDefinedBy to every resource defined. '
+                               'If the (default) "strict" argument is provided, only '
+                               'owl:Class, owl:ObjectProperty, owl:DatatypeProperty, '
+                               'owl:AnnotationProperty and owl:Thing entities will be '
+                               'annotated. If "all" is provided, every entity that has '
+                               'any properties other than rdf:type will be annotated. '
+                               'Will override any existing rdfs:isDefinedBy annotations '
+                               'on the affected entities.')
     update_parser.add_argument('-v', '--set-version', action="store",
                                help='Set the version of the defined ontology')
     update_parser.add_argument('--version-info', action="store",
@@ -175,44 +186,44 @@ def findSingleOntology(g, onto_file):
     return ontology
 
 
-def setVersion(g, ontology, ontologyIRI, version):
+def setVersion(g, ontology, ontology_iri, version):
     """Add or replace versionIRI for the specified ontology."""
-    g.add((ontology, OWL.ontologyIRI, ontologyIRI))
-    logging.debug(f'ontologyIRI {ontologyIRI} added for {ontology}')
+    g.add((ontology, OWL.ontologyIRI, ontology_iri))
+    logging.debug(f'ontologyIRI {ontology_iri} added for {ontology}')
 
     oldVersion = next(g.objects(ontology, OWL.versionIRI), None)
     if oldVersion:
         logging.debug(f'Removing versionIRI {oldVersion} from {ontology}')
         g.remove((ontology, OWL.versionIRI, oldVersion))
 
-    versionIRI = URIRef(f"{ontologyIRI}{version}")
+    versionIRI = URIRef(f"{ontology_iri}{version}")
     g.add((ontology, OWL.versionIRI, versionIRI))
     logging.debug(f'versionIRI {versionIRI} added for {ontology}')
 
 
-def setVersionInfo(g, ontology, versionInfo):
+def set_version_info(g, ontology, version_info):
     """Add versionInfo for the ontology.
 
     If versionInfo is not provided, extracts ontology version from versionIRI.
     """
     pattern = re.compile('^(.*?)(\\d+\\.\\d+\\.\\d+)?$')
-    versionIRI = next(g.objects(ontology, OWL.versionIRI), None)
-    version = pattern.match(str(versionIRI)).group(2) if versionIRI else None
-    if not version and not versionInfo:
+    version_iri = next(g.objects(ontology, OWL.versionIRI), None)
+    version = pattern.match(str(version_iri)).group(2) if version_iri else None
+    if not version and not version_info:
         raise Exception(f'No version found for {ontology}, must specify version info')
 
-    oldVersionInfo = next(g.objects(ontology, OWL.versionInfo), None)
-    if oldVersionInfo:
+    old_version_info = next(g.objects(ontology, OWL.versionInfo), None)
+    if old_version_info:
         logging.debug(f'Removing previous versionInfo from {ontology}')
-        g.remove((ontology, OWL.versionInfo, oldVersionInfo))
+        g.remove((ontology, OWL.versionInfo, old_version_info))
 
-    if not versionInfo:
-        versionInfo = "Version " + version
-    g.add((ontology, OWL.versionInfo, Literal(versionInfo, datatype=XSD.string)))
-    logging.debug(f'versionInfo "{versionInfo}" added for {ontology}')
+    if not version_info:
+        version_info = "Version " + version
+    g.add((ontology, OWL.versionInfo, Literal(version_info, datatype=XSD.string)))
+    logging.debug(f'versionInfo "{version_info}" added for {ontology}')
 
 
-def addDefinedBy(g, ontologyIRI, mode='strict', replace=False):
+def add_defined_by(g, ontology_iri, mode='strict', replace=False):
     """Add rdfs:isDefinedBy to every entity declared by the ontology."""
     if mode == 'strict':
         selector = """
@@ -236,24 +247,25 @@ def addDefinedBy(g, ontologyIRI, mode='strict', replace=False):
           OPTIONAL { ?defined rdfs:isDefinedBy ?defBy }
         }
         """ % selector
+
     definitions = g.query(
         query,
         initNs={'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
     for d in definitions:
         if d.defBy:
-            if d.defBy == ontologyIRI:
-                logging.debug(f'{d.defined} already defined by {ontologyIRI}')
+            if d.defBy == ontology_iri:
+                logging.debug(f'{d.defined} already defined by {ontology_iri}')
             else:
                 if replace:
-                    logging.debug(f'Replaced definedBy for {d.defined} to {ontologyIRI}')
+                    logging.debug(f'Replaced definedBy for {d.defined} to {ontology_iri}')
                     g.remove((d.defined, RDFS.isDefinedBy, d.defBy))
-                    g.add((d.defined, RDFS.isDefinedBy, ontologyIRI))
+                    g.add((d.defined, RDFS.isDefinedBy, ontology_iri))
                 else:
                     logging.warning(f'{d.defined} defined by {d.defBy}'
-                                    f' instead of {ontologyIRI}')
+                                    f' instead of {ontology_iri}')
         else:
             logging.debug(f'Added definedBy to {d.defined}')
-            g.add((d.defined, RDFS.isDefinedBy, ontologyIRI))
+            g.add((d.defined, RDFS.isDefinedBy, ontology_iri))
 
 
 def updateDependencyVersions(g, ontology, versions):
@@ -468,8 +480,8 @@ def __perform_export__(output, output_format, paths, context=None,
         ontologyIRI = findSingleOntology(parse_graph, 'merged graph')
         if ontologyIRI is None:
             return
-        addDefinedBy(parse_graph, ontologyIRI,
-                     mode=defined_by, replace=not retain_defined_by)
+        add_defined_by(parse_graph, ontologyIRI,
+                       mode=defined_by, replace=not retain_defined_by)
 
     serialized = g.serialize(format=output_format)
     output.write(serialized.decode(output.encoding))
@@ -585,7 +597,7 @@ def __bundle_defined_by__(action, variables):
             else:
                 ontologyIRI = ontology
 
-            addDefinedBy(g, ontologyIRI)
+            add_defined_by(g, ontologyIRI)
 
             g.serialize(destination=in_out['outputFile'],
                         format=rdf_format, encoding='utf-8')
@@ -694,10 +706,10 @@ def bundleOntology(command_line_variables, bundle_path):
 
     Parameters
     ----------
-    variables : list
+    command_line_variables : list
         list of variable values to substitute into the template.
-    bundle : string
-        Path to YAML or JSON bundle defintion.
+    bundle_path : string
+        Path to YAML or JSON bundle definition.
 
     Returns
     -------
@@ -777,29 +789,29 @@ def updateOntology(args, output_format):
             logging.warning(f'Ignoring {onto_file}, no ontology found')
             continue
 
-        ontologyIRI = next(g.objects(ontology, OWL.ontologyIRI), None)
-        if ontologyIRI:
-            logging.debug(f'{ontologyIRI} found for {ontology}')
+        ontology_iri = next(g.objects(ontology, OWL.ontologyIRI), None)
+        if ontology_iri:
+            logging.debug(f'{ontology_iri} found for {ontology}')
         else:
-            ontologyIRI = ontology
+            ontology_iri = ontology
 
         # Set version
         if 'set_version' in args and args.set_version:
-            setVersion(g, ontology, ontologyIRI, args.set_version)
+            setVersion(g, ontology, ontology_iri, args.set_version)
         if 'version_info' in args and args.version_info:
-            versionInfo = args.version_info
-            if versionInfo == 'auto':
+            version_info = args.version_info
+            if version_info == 'auto':
                 # Not specified, generate automatically
-                versionInfo = None
+                version_info = None
             try:
-                setVersionInfo(g, ontology, versionInfo)
+                set_version_info(g, ontology, version_info)
             except Exception as e:
                 logging.error(e)
                 continue
 
         # Add rdfs:isDefinedBy
         if 'defined_by' in args and args.defined_by:
-            addDefinedBy(g, ontologyIRI)
+            add_defined_by(g, ontology_iri, mode=args.defined_by, replace=True)
 
         # Update dep versions
         if 'dependency_version' in args and args.dependency_version:
@@ -824,7 +836,7 @@ def main(arguments):
     """Do the thing."""
     logging.basicConfig(level=logging.DEBUG)
 
-    args = configureArgParser().parse_args(args=arguments)
+    args = configure_arg_parser().parse_args(args=arguments)
 
     if args.command == 'bundle':
         bundleOntology(args.variables, args.bundle)

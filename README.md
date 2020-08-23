@@ -32,8 +32,9 @@ optional arguments:
 The `update` sub-command modifies ontology version and dependency information
 ```
 $ onto_tool update -h
-usage: onto_tool update [-h] [-f {xml,turtle,nt} | -i] [-o OUTPUT] [-b]
-                        [-v SET_VERSION] [--version-info [VERSION_INFO]]
+usage: onto_tool update [-h] [-f {xml,turtle,nt} | -i] [-o OUTPUT]
+                        [-b [{all,strict}]] [-v SET_VERSION]
+                        [--version-info [VERSION_INFO]]
                         [-d DEPENDENCY VERSION]
                         [ontology [ontology ...]]
 
@@ -49,7 +50,15 @@ optional arguments:
   -o OUTPUT, --output OUTPUT
                         Path to output file. Will be ignored if --in-place is
                         specified.
-  -b, --defined-by      Add rdfs:isDefinedBy to every resource defined.
+  -b [{all,strict}], --defined-by [{all,strict}]
+                        Add rdfs:isDefinedBy to every resource defined. If the
+                        (default) "strict" argument is provided, only
+                        owl:Class, owl:ObjectProperty, owl:DatatypeProperty,
+                        owl:AnnotationProperty and owl:Thing entities will be
+                        annotated. If "all" is provided, every entity that has
+                        any properties other than rdf:type will be annotated.
+                        Will override any existing rdfs:isDefinedBy
+                        annotations on the affected entities.
   -v SET_VERSION, --set-version SET_VERSION
                         Set the version of the defined ontology
   --version-info [VERSION_INFO]
