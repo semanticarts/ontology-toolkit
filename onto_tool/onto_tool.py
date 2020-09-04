@@ -188,9 +188,6 @@ def findSingleOntology(g, onto_file):
 
 def setVersion(g, ontology, ontology_iri, version):
     """Add or replace versionIRI for the specified ontology."""
-    g.add((ontology, OWL.ontologyIRI, ontology_iri))
-    logging.debug(f'ontologyIRI {ontology_iri} added for {ontology}')
-
     oldVersion = next(g.objects(ontology, OWL.versionIRI), None)
     if oldVersion:
         logging.debug(f'Removing versionIRI {oldVersion} from {ontology}')
@@ -338,7 +335,6 @@ def cleanMergeArtifacts(g, iri, version):
             g.remove(t)
     logging.debug(f'Creating new ontology {iri}:{version}')
     g.add((iri, RDF.type, OWL.Ontology))
-    g.add((iri, OWL.ontologyIRI, iri))
     g.add((iri, OWL.versionIRI, URIRef(str(iri) + version)))
     g.add((iri, OWL.versionInfo, Literal("Created by merge tool.", datatype=XSD.string)))
     for i in externalImports:
@@ -477,10 +473,10 @@ def __perform_export__(output, output_format, paths, context=None,
 
     # Add rdfs:isDefinedBy
     if defined_by:
-        ontologyIRI = findSingleOntology(parse_graph, 'merged graph')
-        if ontologyIRI is None:
+        ontology_iri = findSingleOntology(parse_graph, 'merged graph')
+        if ontology_iri is None:
             return
-        add_defined_by(parse_graph, ontologyIRI,
+        add_defined_by(parse_graph, ontology_iri,
                        mode=defined_by, replace=not retain_defined_by)
 
     serialized = g.serialize(format=output_format)
@@ -591,13 +587,7 @@ def __bundle_defined_by__(action, variables):
             # copy as unchanged
             shutil.copy(in_out['inputFile'], in_out['outputFile'])
         else:
-            ontologyIRI = next(g.objects(ontology, OWL.ontologyIRI), None)
-            if ontologyIRI:
-                logging.debug(f'{ontologyIRI} found for {ontology}')
-            else:
-                ontologyIRI = ontology
-
-            add_defined_by(g, ontologyIRI)
+            add_defined_by(g, ontology)
 
             g.serialize(destination=in_out['outputFile'],
                         format=rdf_format, encoding='utf-8')
@@ -789,11 +779,7 @@ def updateOntology(args, output_format):
             logging.warning(f'Ignoring {onto_file}, no ontology found')
             continue
 
-        ontology_iri = next(g.objects(ontology, OWL.ontologyIRI), None)
-        if ontology_iri:
-            logging.debug(f'{ontology_iri} found for {ontology}')
-        else:
-            ontology_iri = ontology
+        ontology_iri = ontology
 
         # Set version
         if 'set_version' in args and args.set_version:
