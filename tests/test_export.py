@@ -56,3 +56,21 @@ def test_export_merge(capsys):
         [(URIRef('https://data.clientX.com/myProperty'),
           URIRef('https://data.clientX.com/d/coreOntology'))]
     )
+
+
+def test_versioned_defined_by(capsys):
+    onto_tool.main([
+        'export',
+        '-m', 'https://data.clientX.com/d/coreOntology', '2.0.0',
+        '-b', 'strict',
+        '--versioned-definedBy',
+        'tests/merge-subdomain.ttl', 'tests/merge-top.ttl'
+    ])
+    updated = capsys.readouterr().out
+    graph = Graph()
+    graph.parse(data=updated, format="turtle")
+    assert lists_equal(
+        list(graph.subject_objects(RDFS.isDefinedBy)),
+        [(URIRef('https://data.clientX.com/myProperty'),
+          URIRef('https://data.clientX.com/d/coreOntology2.0.0'))]
+    )
