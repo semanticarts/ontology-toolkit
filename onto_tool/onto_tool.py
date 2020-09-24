@@ -12,6 +12,7 @@ import shutil
 import gzip
 import json
 import yaml
+import csv
 from jsonschema import validate
 from rdflib import Graph, ConjunctiveGraph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
@@ -666,6 +667,42 @@ def __bundle_graph__(action, variables):
     og.create_graf()
 
 
+def __bundle_sparql__(action, variables):
+    logging.debug('SPARQL %s', action)
+    output = action['target'].format(**variables)
+    query = action['query'].format(**variables)
+    if isfile(query):
+        query_text = open(query, 'r').read()
+    else:
+        query_text = query
+
+    g = Graph()
+    for in_out in __bundle_file_list(action, variables, single_target=True):
+        onto_file = in_out['inputFile']
+        rdf_format = guess_format(onto_file)
+        g.parse(onto_file, format=rdf_format)
+
+    results = g.query(
+        query_text,
+        initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+
+    if results.vars is not None:
+        # SELECT Query
+        with open(output, 'w') as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(results.vars)
+            writer.writerows(results)
+    elif results.graph is not None:
+        # CONSTRUCT Query
+        if 'format' in action:
+            rdf_format = 'pretty-xml' if action['format'] == 'xml' else action['format']
+        else:
+            rdf_format = 'turtle'
+        g.serialize(destination=output, format=rdf_format, encoding='utf-8')
+    else:
+        raise Exception('Unknown query type: ' + query_text)
+
+
 def __boolean_option__(action, key, variables):
     if key not in action:
         return False
@@ -766,8 +803,10 @@ def bundleOntology(command_line_variables, bundle_path):
             __bundle_defined_by__(action, substituted)
         elif action['action'] == 'export':
             __bundle_export__(action, substituted)
+        elif action['action'] == 'sparql':
+            __bundle_sparql__(action, substituted)
         else:
-            raise Exception('Unknown action ' + action)
+            raise Exception('Unknown action ' + str(action))
 
 
 def exportOntology(args, output_format):
