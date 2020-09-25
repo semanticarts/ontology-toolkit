@@ -151,11 +151,50 @@
               "markdown",
               "graph",
               "definedBy",
-              "export"
+              "export",
+              "sparql"
             ]
           }
         },
         "allOf": [
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "sparql"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "source": {
+                  "$ref": "#/definitions/non_empty_string"
+                },
+                "target": {
+                  "$ref": "#/definitions/non_empty_string"
+                },
+                "includes": {
+                  "$ref": "#/definitions/include_list"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "format": {
+                  "type": "string",
+                  "enum": [
+                    "turtle",
+                    "xml",
+                    "nt"
+                  ]
+                }
+              },
+              "required": [
+                "query",
+                "source",
+                "target"
+              ]
+            }
+          },
           {
             "if": {
               "properties": {
