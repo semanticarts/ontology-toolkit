@@ -98,7 +98,12 @@ def configure_arg_parser():
                                'annotated. If "all" is provided, every entity that has '
                                'any properties other than rdf:type will be annotated. '
                                'Will override any existing rdfs:isDefinedBy annotations '
-                               'on the affected entities.')
+                               'on the affected entities unless --retain-definedBy is '
+                               'specified.')
+    update_parser.add_argument('--retain-definedBy', action="store_true",
+                               help='Retain existing values of rdfs:isDefinedBy')
+    update_parser.add_argument('--versioned-definedBy', action="store_true",
+                               help='Use versionIRI for rdfs:isDefinedBy, when available')
     update_parser.add_argument('-v', '--set-version', action="store",
                                help='Set the version of the defined ontology')
     update_parser.add_argument('--version-info', action="store",
@@ -143,6 +148,8 @@ def configure_arg_parser():
     export_parser.add_argument('--retain-definedBy', action="store_true",
                                help='When merging ontologies, retain existing values '
                                'of rdfs:isDefinedBy')
+    export_parser.add_argument('--versioned-definedBy', action="store_true",
+                               help='Use versionIRI for rdfs:isDefinedBy, when available')
     export_parser.add_argument('ontology', nargs="*", default=[],
                                help="Ontology file or directory containing OWL files")
 
@@ -186,19 +193,16 @@ def findSingleOntology(g, onto_file):
     return ontology
 
 
-def setVersion(g, ontology, ontology_iri, version):
+def set_version(g, ontology, ontology_iri, version):
     """Add or replace versionIRI for the specified ontology."""
-    g.add((ontology, OWL.ontologyIRI, ontology_iri))
-    logging.debug(f'ontologyIRI {ontology_iri} added for {ontology}')
+    old_version = next(g.objects(ontology, OWL.versionIRI), None)
+    if old_version:
+        logging.debug(f'Removing versionIRI {old_version} from {ontology}')
+        g.remove((ontology, OWL.versionIRI, old_version))
 
-    oldVersion = next(g.objects(ontology, OWL.versionIRI), None)
-    if oldVersion:
-        logging.debug(f'Removing versionIRI {oldVersion} from {ontology}')
-        g.remove((ontology, OWL.versionIRI, oldVersion))
-
-    versionIRI = URIRef(f"{ontology_iri}{version}")
-    g.add((ontology, OWL.versionIRI, versionIRI))
-    logging.debug(f'versionIRI {versionIRI} added for {ontology}')
+    version_iri = URIRef(f"{ontology_iri}{version}")
+    g.add((ontology, OWL.versionIRI, version_iri))
+    logging.debug(f'versionIRI {version_iri} added for {ontology}')
 
 
 def set_version_info(g, ontology, version_info):
@@ -223,8 +227,12 @@ def set_version_info(g, ontology, version_info):
     logging.debug(f'versionInfo "{version_info}" added for {ontology}')
 
 
-def add_defined_by(g, ontology_iri, mode='strict', replace=False):
+def add_defined_by(g, ontology_iri, mode='strict', replace=False, versioned=False):
     """Add rdfs:isDefinedBy to every entity declared by the ontology."""
+    if versioned:
+        version_iri = next(g.objects(ontology_iri, OWL.versionIRI), None)
+        if version_iri is not None:
+            ontology_iri = version_iri
     if mode == 'strict':
         selector = """
           FILTER(?dtype IN (
@@ -338,7 +346,6 @@ def cleanMergeArtifacts(g, iri, version):
             g.remove(t)
     logging.debug(f'Creating new ontology {iri}:{version}')
     g.add((iri, RDF.type, OWL.Ontology))
-    g.add((iri, OWL.ontologyIRI, iri))
     g.add((iri, OWL.versionIRI, URIRef(str(iri) + version)))
     g.add((iri, OWL.versionInfo, Literal("Created by merge tool.", datatype=XSD.string)))
     for i in externalImports:
@@ -420,7 +427,9 @@ def generateGraphic(fileRefs, compact, output, version):
 def __perform_export__(output, output_format, paths, context=None,
                        strip_versions=False,
                        merge=None,
-                       defined_by=None, retain_defined_by=False):
+                       defined_by=None,
+                       retain_defined_by=False,
+                       versioned_defined_by=False):
     """
     Export one or more files as a single output.
 
@@ -451,6 +460,10 @@ def __perform_export__(output, output_format, paths, context=None,
         The default (False) functionality is to replace any existing
         rdfs:isDefinedBy annotations with a reference to the new ontology.
         If True, however, existing rdfs:isDefinedBy values are left in place.
+    versioned_defined_by : boolean, optional
+        The default (False) functionality is to use the ontology IRI for
+        rdfs:isDefinedBy annotations.
+        If True and a versionIRI is present, use that instead.
 
     Returns
     -------
@@ -477,11 +490,13 @@ def __perform_export__(output, output_format, paths, context=None,
 
     # Add rdfs:isDefinedBy
     if defined_by:
-        ontologyIRI = findSingleOntology(parse_graph, 'merged graph')
-        if ontologyIRI is None:
+        ontology_iri = findSingleOntology(parse_graph, 'merged graph')
+        if ontology_iri is None:
             return
-        add_defined_by(parse_graph, ontologyIRI,
-                       mode=defined_by, replace=not retain_defined_by)
+        add_defined_by(parse_graph, ontology_iri,
+                       mode=defined_by,
+                       replace=not retain_defined_by,
+                       versioned=versioned_defined_by)
 
     serialized = g.serialize(format=output_format)
     output.write(serialized.decode(output.encoding))
@@ -591,13 +606,9 @@ def __bundle_defined_by__(action, variables):
             # copy as unchanged
             shutil.copy(in_out['inputFile'], in_out['outputFile'])
         else:
-            ontologyIRI = next(g.objects(ontology, OWL.ontologyIRI), None)
-            if ontologyIRI:
-                logging.debug(f'{ontologyIRI} found for {ontology}')
-            else:
-                ontologyIRI = ontology
-
-            add_defined_by(g, ontologyIRI)
+            add_defined_by(g, ontology,
+                           replace=not __boolean_option__(action, 'retainDefinedBy', variables),
+                           versioned=__boolean_option__(action, 'versionedDefinedBy', variables))
 
             g.serialize(destination=in_out['outputFile'],
                         format=rdf_format, encoding='utf-8')
@@ -695,7 +706,8 @@ def __bundle_export__(action, variables):
                        __boolean_option__(action, 'stripVersions', variables),
                        merge,
                        defined_by,
-                       __boolean_option__(action, 'retainDefinedBy', variables))
+                       __boolean_option__(action, 'retainDefinedBy', variables),
+                       __boolean_option__(action, 'versionedDefinedBy', variables))
 
     output.close()
 
@@ -772,7 +784,8 @@ def exportOntology(args, output_format):
                        'strip_versions' in args and args.strip_versions,
                        args.merge if 'merge' in args and args.merge else None,
                        defined_by,
-                       args.retain_definedBy)
+                       args.retain_definedBy,
+                       args.versioned_definedBy)
 
 
 def updateOntology(args, output_format):
@@ -789,15 +802,11 @@ def updateOntology(args, output_format):
             logging.warning(f'Ignoring {onto_file}, no ontology found')
             continue
 
-        ontology_iri = next(g.objects(ontology, OWL.ontologyIRI), None)
-        if ontology_iri:
-            logging.debug(f'{ontology_iri} found for {ontology}')
-        else:
-            ontology_iri = ontology
+        ontology_iri = ontology
 
         # Set version
         if 'set_version' in args and args.set_version:
-            setVersion(g, ontology, ontology_iri, args.set_version)
+            set_version(g, ontology, ontology_iri, args.set_version)
         if 'version_info' in args and args.version_info:
             version_info = args.version_info
             if version_info == 'auto':
@@ -811,7 +820,9 @@ def updateOntology(args, output_format):
 
         # Add rdfs:isDefinedBy
         if 'defined_by' in args and args.defined_by:
-            add_defined_by(g, ontology_iri, mode=args.defined_by, replace=True)
+            add_defined_by(g, ontology_iri, mode=args.defined_by,
+                           replace=not args.retain_definedBy,
+                           versioned=args.versioned_definedBy)
 
         # Update dep versions
         if 'dependency_version' in args and args.dependency_version:

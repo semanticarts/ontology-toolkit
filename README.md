@@ -58,7 +58,8 @@ optional arguments:
                         annotated. If "all" is provided, every entity that has
                         any properties other than rdf:type will be annotated.
                         Will override any existing rdfs:isDefinedBy
-                        annotations on the affected entities.
+                        annotations on the affected entities unless --retain-
+                        definedBy is specified.
   -v SET_VERSION, --set-version SET_VERSION
                         Set the version of the defined ontology
   --version-info [VERSION_INFO]

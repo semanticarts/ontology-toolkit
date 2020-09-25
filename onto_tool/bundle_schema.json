@@ -262,7 +262,21 @@
               }
             },
             "then": {
-              "$ref": "#/definitions/bulk_file_operation"
+              "allOf": [
+                {
+                  "$ref": "#/definitions/bulk_file_operation"
+                },
+                {
+                  "properties": {
+                    "retainDefinedBy": {
+                      "type": "boolean"
+                    },
+                    "versionedDefinedBy": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              ]
             }
           },
           {
@@ -294,6 +308,9 @@
                       ]
                     },
                     "retainDefinedBy": {
+                      "type": "boolean"
+                    },
+                    "versionedDefinedBy": {
                       "type": "boolean"
                     },
                     "stripVersions": {

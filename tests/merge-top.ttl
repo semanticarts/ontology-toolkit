@@ -1,0 +1,7 @@
+@prefix : <https://data.clientX.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+<https://data.clientX.com/d/topOntology>
+    a owl:Ontology ;
+    owl:imports <https://come.external.com/ontology1.3.0> .
