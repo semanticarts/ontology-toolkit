@@ -98,7 +98,8 @@ def configure_arg_parser():
                                'annotated. If "all" is provided, every entity that has '
                                'any properties other than rdf:type will be annotated. '
                                'Will override any existing rdfs:isDefinedBy annotations '
-                               'on the affected entities.')
+                               'on the affected entities unless --retain-definedBy is '
+                               'specified.')
     update_parser.add_argument('--retain-definedBy', action="store_true",
                                help='Retain existing values of rdfs:isDefinedBy')
     update_parser.add_argument('--versioned-definedBy', action="store_true",
@@ -460,7 +461,7 @@ def __perform_export__(output, output_format, paths, context=None,
         rdfs:isDefinedBy annotations with a reference to the new ontology.
         If True, however, existing rdfs:isDefinedBy values are left in place.
     versioned_defined_by : boolean, optional
-        The default (False) functionality is to use the ontology IRI fo
+        The default (False) functionality is to use the ontology IRI for
         rdfs:isDefinedBy annotations.
         If True and a versionIRI is present, use that instead.
 
