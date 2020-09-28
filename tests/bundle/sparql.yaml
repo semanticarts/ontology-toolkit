@@ -18,8 +18,4 @@ actions:
   - action: 'sparql'
     source: '{output}/sparql.ttl'
     target: '{output}/sparql.csv'
-    query: >
-      select ?s ?p ?o
-      WHERE {{
-        ?s ?p ?o .
-      }} order by ?p
+    query: '{input}/bundle/test_sparql.rq'
