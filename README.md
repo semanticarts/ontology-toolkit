@@ -250,3 +250,10 @@ one of the following values:
   `.png` outputs are written to the directory specified in the `target` option, and `title` and 
   `version` attributes configure the title on the generated graph. If `compact` is specified as
   `True`, a concise graph including only ontology names and imports is generated.
+- `sparql` reads RDF files provided via the `source` and `includes` options and executes a SPARQL
+  query on the resulting combined graph.
+    * If the `query` option is a valid file path, the query is read from that file,
+      otherwise the contents of the `query` option are interpreted as the query.
+    * `SELECT` query results are stored in the file specified via `target` as a CSV.
+    * RDF results from a `CONSTRUCT` query are
+  stored as either Turtle, RDF/XML or N-Triples, depending on the `format` option (`turtle`, `xml`, or `nt`).
