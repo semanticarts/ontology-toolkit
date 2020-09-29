@@ -9,11 +9,13 @@ actions:
       - 'merge-top.ttl'
     target: '{output}/sparql.ttl'
     query: >
+      prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       construct {{
-        ?s ?p ?o .
+        ?s a ?type .
+        ?s rdfs:definedBy <urn:test-sparql-queries>
       }}
       WHERE {{
-        ?s ?p ?o .
+        ?s a ?type .
       }}
   - action: 'sparql'
     source: '{output}/sparql.ttl'

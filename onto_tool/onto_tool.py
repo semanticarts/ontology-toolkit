@@ -698,7 +698,7 @@ def __bundle_sparql__(action, variables):
             rdf_format = 'pretty-xml' if action['format'] == 'xml' else action['format']
         else:
             rdf_format = 'turtle'
-        g.serialize(destination=output, format=rdf_format, encoding='utf-8')
+        results.graph.serialize(destination=output, format=rdf_format, encoding='utf-8')
     else:
         raise Exception('Unknown query type: ' + query_text)
 
