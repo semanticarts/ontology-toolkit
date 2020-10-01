@@ -17,7 +17,7 @@ def test_sparql_queries():
          'p': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type',
          'o': 'http://www.w3.org/2002/07/owl#Ontology'},
         {'s': 'https://data.clientX.com/d/topOntology',
-         'p': 'http://www.w3.org/2002/07/owl#imports',
-         'o': 'https://come.external.com/ontology1.3.0'}
+         'p': 'http://www.w3.org/2000/01/rdf-schema#definedBy',
+         'o': 'urn:test-sparql-queries'}
     ]
     assert actual == expected

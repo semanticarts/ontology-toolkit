@@ -17,6 +17,7 @@ from jsonschema import validate
 from rdflib import Graph, ConjunctiveGraph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
 from rdflib.util import guess_format
+from rdflib.plugins.sparql import prepareQuery
 from .ontograph import OntoGraf
 from .mdutils import md2html
 
@@ -682,8 +683,9 @@ def __bundle_sparql__(action, variables):
         rdf_format = guess_format(onto_file)
         g.parse(onto_file, format=rdf_format)
 
+    parsed_query = prepareQuery(query_text)
     results = g.query(
-        query_text,
+        parsed_query,
         initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
 
     if results.vars is not None:
@@ -698,7 +700,9 @@ def __bundle_sparql__(action, variables):
             rdf_format = 'pretty-xml' if action['format'] == 'xml' else action['format']
         else:
             rdf_format = 'turtle'
-        g.serialize(destination=output, format=rdf_format, encoding='utf-8')
+        for prefix, uri in parsed_query.prologue.namespace_manager.namespaces():
+            results.graph.bind(prefix, uri)
+        results.graph.serialize(destination=output, format=rdf_format, encoding='utf-8')
     else:
         raise Exception('Unknown query type: ' + query_text)
 
