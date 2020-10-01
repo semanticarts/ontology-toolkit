@@ -1,0 +1,10 @@
+# Python virtual env
+venv/
+__pycache__/
+
+# PyLint
+.pylint.d/
+
+# Spyder projects
+.spyproject/
+
