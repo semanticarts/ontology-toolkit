@@ -1,4 +1,5 @@
 """Toolkit for ontology maintenance and release."""
+import io
 import logging
 import argparse
 import os
@@ -18,6 +19,7 @@ from rdflib import Graph, ConjunctiveGraph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
 from rdflib.util import guess_format
 from rdflib.plugins.sparql import prepareQuery
+import pyshacl
 from .ontograph import OntoGraf
 from .mdutils import md2html
 
@@ -517,12 +519,12 @@ class VarDict(dict):
         return template.format(**self)
 
 
-def __bundle_file_list(action, variables, single_target=False):
+def __bundle_file_list(action, variables, ignore_target=False):
     """
     Expand a source/target/includes spec into a list of inputFile/outputFile pairs.
 
-    If single_target is specified, renaming is ignored and target is
-    treated as single file path.
+    If ignore_target is specified, renaming is ignored and 'outputFile'
+    will always be None
 
     Otherwise, target is assumed to be a directory, which is created if
     it does not exist.
@@ -534,26 +536,30 @@ def __bundle_file_list(action, variables, single_target=False):
         an includes list of patterns.
     variables : dict
         Current variable values to use in substitution.
-    single_target : bool, optional
+    ignore_target : bool, optional
         If True, only generate input list.
 
     Yields
     ------
     dict
-        Containes 'inputFile' and 'outputFile' unless single_target
+        Containes 'inputFile' and 'outputFile' unless ignore_target
         is specifed.
 
     """
     if 'includes' in action:
         # source and target are directories, apply glob
         src_dir = action['source'].format(**variables)
-        tgt_dir = action['target'].format(**variables)
-        if not single_target and not isdir(tgt_dir):
-            os.mkdir(tgt_dir)
+        if not ignore_target:
+            tgt_dir = action['target'].format(**variables)
+            if not isdir(tgt_dir):
+                os.mkdir(tgt_dir)
+        else:
+            # There are times when
+            tgt_dir = None
         for pattern in action['includes']:
             for input_file in glob(os.path.join(src_dir, pattern)):
-                if single_target:
-                    output_file = tgt_dir
+                if ignore_target:
+                    output_file = None
                 else:
                     if 'rename' in action:
                         from_pattern = re.compile(
@@ -565,10 +571,10 @@ def __bundle_file_list(action, variables, single_target=False):
                     else:
                         output_file = os.path.basename(input_file)
                 yield dict(inputFile=input_file,
-                           outputFile=os.path.join(tgt_dir, output_file))
+                           outputFile=None if output_file is None else os.path.join(tgt_dir, output_file))
     else:
         yield dict(inputFile=action['source'].format(**variables),
-                   outputFile=action['target'].format(**variables))
+                   outputFile=None if ignore_target else action['target'].format(**variables))
 
 
 def __bundle_transform__(action, tools, variables):
@@ -677,11 +683,7 @@ def __bundle_sparql__(action, variables):
     else:
         query_text = query
 
-    g = Graph()
-    for in_out in __bundle_file_list(action, variables, single_target=True):
-        onto_file = in_out['inputFile']
-        rdf_format = guess_format(onto_file)
-        g.parse(onto_file, format=rdf_format)
+    g = __build_graph_from_inputs__(action, variables)
 
     parsed_query = prepareQuery(query_text)
     results = g.query(
@@ -691,9 +693,7 @@ def __bundle_sparql__(action, variables):
     if results.vars is not None:
         # SELECT Query
         with open(output, 'w') as csv_file:
-            writer = csv.writer(csv_file)
-            writer.writerow(results.vars)
-            writer.writerows(results)
+            __serialize_select_results__(csv_file, results)
     elif results.graph is not None:
         # CONSTRUCT Query
         if 'format' in action:
@@ -705,6 +705,116 @@ def __bundle_sparql__(action, variables):
         results.graph.serialize(destination=output, format=rdf_format, encoding='utf-8')
     else:
         raise Exception('Unknown query type: ' + query_text)
+
+
+def __serialize_select_results__(output, results):
+    writer = csv.writer(output)
+    writer.writerow(results.vars)
+    writer.writerows(results)
+
+
+def __build_graph_from_inputs__(action, variables):
+    """Read RDF files specified by source/[inputs] into a Graph"""
+    g = Graph()
+    for in_out in __bundle_file_list(action, variables, ignore_target=True):
+        onto_file = in_out['inputFile']
+        rdf_format = guess_format(onto_file)
+        g.parse(onto_file, format=rdf_format)
+    return g
+
+
+def __bundle_verify__(action, variables):
+    logging.debug('Verify %s', action)
+    if action['type'] == 'select':
+        __verify_select__(action, variables)
+    elif action['type'] == 'ask':
+        __verify_ask__(action, variables)
+    elif action['type'] == 'shacl':
+        __verify_shacl__(action, variables)
+
+
+def __verify_select__(action, variables):
+    queries = __build_query_list__(action, variables)
+
+    g = __build_graph_from_inputs__(action, variables)
+
+    for query_text in queries:
+        parsed_query = prepareQuery(query_text[1])
+        results = g.query(
+            parsed_query,
+            initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+
+        if results.vars is not None:
+            output = [results.vars]
+            output.extend(results)
+            if (len(output)) > 1:
+                serialized = io.StringIO()
+                __serialize_select_results__(serialized, results)
+                if 'target' in action:
+                    with open(action['target'].format(**variables), 'w') as select_output:
+                        select_output.write(serialized.getvalue())
+                logging.error("Verification query %s produced non-empty results:\n%s",
+                              query_text[0], serialized.getvalue())
+                exit(1)
+        else:
+            raise Exception('Invalid query for SELECT verify: ' + query_text)
+
+
+def __verify_shacl__(action, variables):
+    data_graph = __build_graph_from_inputs__(action, variables)
+    shape_graph = __build_graph_from_inputs__(action['shapes'], variables)
+
+    conforms, results_graph, results_text = \
+        pyshacl.validate(
+            data_graph, shacl_graph=shape_graph,
+            inference='rdfs', abort_on_error=False, meta_shacl=False,
+            advanced=False, js=False, debug=False)
+
+    if not conforms:
+        if 'target' in action:
+            results_graph.serialize(
+                destination=action['target'].format(**variables),
+                format='turtle', encoding='utf-8')
+        logging.error("SHACL verification produced non-empty results:\n%s", results_text)
+        exit(1)
+
+
+def __verify_ask__(action, variables):
+    queries = __build_query_list__(action, variables)
+
+    g = __build_graph_from_inputs__(action, variables)
+
+    for query_text in queries:
+        parsed_query = prepareQuery(query_text[1])
+        results = g.query(
+            parsed_query,
+            initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+
+        if results.askAnswer is not None:
+            if results.askAnswer != action['expected']:
+                logging.error(
+                    "Verification ASK query %s did not match expected result %s",
+                    query_text[0], action['expected'])
+                exit(1)
+        else:
+            raise Exception('Invalid query for ASK verify: ' + query_text)
+
+
+def __build_query_list__(action, variables):
+    if 'query' in action:
+        query = action['query'].format(**variables)
+        if isfile(query):
+            queries = [(query, open(query, 'r').read())]
+        else:
+            queries = [('inline', query)]
+    elif 'queries' in action:
+        query_files = [
+            entry['inputFile'] for entry in
+            __bundle_file_list(action['queries'], variables, ignore_target=True)]
+        queries = [(query, open(query, 'r').read()) for query in query_files]
+    else:
+        raise Exception('No queries specified for verify action: ' + str(action))
+    return queries
 
 
 def __boolean_option__(action, key, variables):
@@ -735,7 +845,7 @@ def __bundle_export__(action, variables):
         merge = (action['merge']['iri'], action['merge']['version'])
 
     paths = list(f['inputFile']
-                 for f in __bundle_file_list(action, variables, single_target=True))
+                 for f in __bundle_file_list(action, variables, ignore_target=True))
 
     defined_by = None
     if 'definedBy' in action:
@@ -772,7 +882,7 @@ def bundleOntology(command_line_variables, bundle_path):
     extension = os.path.splitext(bundle_path)[1]
     schema_file = os.path.join(
         os.path.dirname(os.path.realpath(__file__)),
-        'bundle_schema.json')
+        'bundle_schema.yaml')
     with open(bundle_path, 'r') as b_stream, open(schema_file, 'r') as schema:
         if extension == '.yaml':
             bundle = yaml.safe_load(b_stream)
@@ -781,7 +891,7 @@ def bundleOntology(command_line_variables, bundle_path):
             bundle = json.load(b_stream)
 
         # will throw ValidationError on failure
-        validate(bundle, json.load(schema))
+        validate(bundle, yaml.safe_load(schema))
 
     variables = VarDict()
     variables.update(bundle['variables'])
@@ -809,6 +919,8 @@ def bundleOntology(command_line_variables, bundle_path):
             __bundle_export__(action, substituted)
         elif action['action'] == 'sparql':
             __bundle_sparql__(action, substituted)
+        elif action['action'] == 'verify':
+            __bundle_verify__(action, substituted)
         else:
             raise Exception('Unknown action ' + str(action))
 

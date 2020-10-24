@@ -257,3 +257,40 @@ one of the following values:
     * `SELECT` query results are stored in the file specified via `target` as a CSV.
     * RDF results from a `CONSTRUCT` query are
   stored as either Turtle, RDF/XML or N-Triples, depending on the `format` option (`turtle`, `xml`, or `nt`).
+- `verify` reads RDF files provided via the `source` and `includes` options and performs validation on the
+  resulting combined graph. If the validation fails, the bundle process exits with a non-zero status and
+  does not execute subsequent actions. Three different types of verification are supported, based on the 
+  value of the `type` option:
+    * If `type` is `select`, one or more SPARQL `SELECT` queries are executed against the graph, and the
+      first query to return a non-empty result will terminate the bundle. The results of the query will
+      be output to the log, and also written as CSV to a file path specified by the `target` option, if
+      provided. Queries can be specified in one of two ways (only one can be present):
+      * If the `query` option is a valid file path, the query is read from that file,
+        otherwise the contents of the `query` option are interpreted as the query, e.g.
+        ```yaml
+        query: >
+          prefix skos: <http://www.w3.org/2004/02/skos/core#>
+          select ?unlabeled where {{
+            ?unlabeled a ?type .
+            filter not exists {{ ?unlabeled skos:prefLabel ?label }}
+          }}
+        ```
+      * If `queries` is provided, a list of queries will be built from the `source` and `includes`
+        sub-options.
+    * If `type` is `ask`, one or more SPARQL `ASK` queries will be executed, and if any of them return
+      a result that does not match the required `expected` option, the bundle will terminate. Queries are
+      specified similarly to the `select` validation.
+    * If `type` is `shacl`, a SHACL shape graph will be constructed from the file specified via the `shapes`
+      option (which must have a `source`, and optionally `includes`), with the bundle terminating if
+      a non-empty validation report is produced. The report is emitted to the log, and saved as Turtle to
+      the path specified in the `target` option if it's provided. For example:
+      ```yaml
+      - action: 'verify'
+        type: 'shacl'
+        source: '{input}'
+        includes:
+          - 'verify_data.ttl'
+        target: '{output}/verify_shacl_errors.ttl'
+        shapes:
+          source: '{input}/verify_shacl_shapes.ttl'
+      ```
