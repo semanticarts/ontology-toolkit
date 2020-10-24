@@ -82,7 +82,6 @@ properties:
       required:
         - name
         - type
-        - arguments
       properties:
         name:
           $ref: '#/definitions/non_empty_string'
@@ -90,11 +89,7 @@ properties:
           type: string
           enum:
             - Java
-        arguments:
-          type: array
-          items:
-            type: string
-          minLength: 2
+            - sparql
       allOf:
         - if:
             properties:
@@ -104,8 +99,28 @@ properties:
             properties:
               jar:
                 $ref: '#/definitions/non_empty_string'
+              arguments:
+                type: array
+                items:
+                  type: string
+                minLength: 2
             required:
               - jar
+              - arguments
+        - if:
+            properties:
+              type:
+                const: sparql
+          then:
+            allOf:
+              - $ref: '#/definitions/multi_query_spec'
+              - properties:
+                  format:
+                    type: string
+                    enum:
+                      - turtle
+                      - xml
+                      - nt
   actions:
     type: array
     items:

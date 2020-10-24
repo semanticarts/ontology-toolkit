@@ -1,0 +1,31 @@
+bundle: test
+variables:
+  input: "tests/bundle"
+  output: "tests/bundle"
+  lang: "en"
+tools:
+  - name: "add-language-en"
+    type: "sparql"
+    query: >
+      prefix skos: <http://www.w3.org/2004/02/skos/core#>
+      DELETE {{
+        ?subject skos:prefLabel ?nolang .
+      }}
+      INSERT {{
+        ?subject skos:prefLabel ?withlang
+      }}
+      where {{
+        ?subject skos:prefLabel ?nolang .
+        FILTER(lang(?nolang) = '')
+        BIND(STRLANG(?nolang, '{lang}') as ?withlang)
+      }}
+actions:
+  - action: 'transform'
+    tool: 'add-language-en'
+    source: '{input}'
+    includes:
+      - 'transform_sparql_data.ttl'
+    rename:
+      from: "(.*)\\.ttl"
+      to: "\\g<1>_{lang}.ttl"
+    target: '{output}'

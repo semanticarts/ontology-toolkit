@@ -582,9 +582,15 @@ def __bundle_transform__(action, tools, variables):
     tool = next((t for t in tools if t['name'] == action['tool']), None)
     if not tool:
         raise Exception('Missing tool ', action['tool'])
-    if tool['type'] != 'Java':
+    if tool['type'] == 'Java':
+        __bundle_transform_java__(action, tool, variables)
+    elif tool['type'] == 'sparql':
+        __bundle_transform_sparql__(action, tool, variables)
+    else:
         raise Exception('Unsupported tool type ', tool['type'])
 
+
+def __bundle_transform_java__(action, tool, variables):
     for in_out in __bundle_file_list(action, variables):
         invocation_vars = VarDict()
         invocation_vars.update(variables)
@@ -592,11 +598,49 @@ def __bundle_transform__(action, tools, variables):
         interpreted_args = ["java", "-jar", tool['jar'].format(**invocation_vars)] + [
             arg.format(**invocation_vars) for arg in tool['arguments']]
         logging.debug('Running %s', interpreted_args)
-        subprocess.run(interpreted_args)
+        status = subprocess.run(interpreted_args, capture_output=True)
+        if status.returncode != 0:
+            logging.error("Tool %s exited with %d: %s", interpreted_args, status.returncode, status.stderr)
+            exit(1)
         if 'replace' in action:
             replacePatternInFile(in_out['outputFile'],
                                  action['replace']['from'].format(**invocation_vars),
                                  action['replace']['to'].format(**invocation_vars))
+
+
+def __bundle_transform_sparql__(action, tool, variables):
+    query = tool['query'].format(**variables)
+    if isfile(query):
+        query_text = open(query, 'r').read()
+    else:
+        query_text = query
+
+    from rdflib.plugins.sparql.parser import parseUpdate
+    from rdflib.plugins.sparql.algebra import translateUpdate
+
+    parsed_query = translateUpdate(parseUpdate(query_text))
+
+    for in_out in __bundle_file_list(action, variables):
+        g = Graph()
+        onto_file = in_out['inputFile']
+        rdf_format = guess_format(onto_file)
+        g.parse(onto_file, format=rdf_format)
+
+        g.update(
+            parsed_query,
+            initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+
+        if 'format' in tool:
+            rdf_format = 'pretty-xml' if action['format'] == 'xml' else action['format']
+        else:
+            rdf_format = rdf_format
+
+        g.serialize(destination=in_out['outputFile'], format=rdf_format, encoding='utf-8')
+
+        if 'replace' in action:
+            replacePatternInFile(in_out['outputFile'],
+                                 action['replace']['from'].format(**variables),
+                                 action['replace']['to'].format(**variables))
 
 
 def __bundle_defined_by__(action, variables):

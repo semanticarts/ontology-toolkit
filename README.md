@@ -159,27 +159,49 @@ Values can reference other values using the `{name}` template syntax.
 
 #### Tool definition
 
-```yaml
-tools:
-- name: "serializer"
-  type: "Java"
-  jar: "{rdf-toolkit}"
-  arguments:
-    - "-tfmt"
-    - "rdf-xml"
-    - "-sdt"
-    - "explicit"
-    - "-dtd"
-    - "-ibn"
-    - "-s"
-    - "{inputFile}"
-    - "-t"
-    - "{outputFile}"
-```
-At this time, only Java tools can be defined, and they require a `name` by which they are referenced, 
-a path to the executable Jar file and a list of `arguments` that will be applied to each file processed.
-The `inputFile` and `outputFile` variables will be bound during execution, but other variables can be
-used to construct the arguments.
+All tools require a `name` by which they are referenced in `transform` actions. Two different tool types are supported:
+* Java tools (`type: "Java"`) require a path to the executable Jar file specified via the `jar` option,
+  and a list of `arguments` that will be applied to each file processed.
+  The `inputFile` and `outputFile` variables will be bound during execution, but other variables can be
+  used to construct the arguments.
+  tools:
+  ```yaml
+  - name: "serializer"
+    type: "Java"
+    jar: "{rdf-toolkit}"
+    arguments:
+      - "-tfmt"
+      - "rdf-xml"
+      - "-sdt"
+      - "explicit"
+      - "-dtd"
+      - "-ibn"
+      - "-s"
+      - "{inputFile}"
+      - "-t"
+      - "{outputFile}"
+  ```
+* SPARQL tools apply a SPARQL Update query to each input file and serialize the resulting graph into the 
+  output file. RDF format is preserved unless overridden with the `format` option. If the query is specified
+  inline, template substitution will be applied to it, so bundle variables can be used, but double braces
+  (`{{` instead of `{`, `}}` instead of `}`) have to be used to escape actual braces.
+  ```yaml
+    - name: "add-language-en"
+      type: "sparql"
+      query: >
+        prefix skos: <http://www.w3.org/2004/02/skos/core#>
+        DELETE {{
+          ?subject skos:prefLabel ?nolang .
+        }}
+        INSERT {{
+          ?subject skos:prefLabel ?withlang
+        }}
+        where {{
+          ?subject skos:prefLabel ?nolang .
+          FILTER(lang(?nolang) = '')
+          BIND(STRLANG(?nolang, '{lang}') as ?withlang)
+        }}
+  ```
 
 #### Actions
 
