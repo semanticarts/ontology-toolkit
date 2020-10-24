@@ -135,8 +135,6 @@ properties:
             properties:
               source:
                 $ref: '#/definitions/non_empty_string'
-              target:
-                $ref: '#/definitions/non_empty_string'
               includes:
                 $ref: '#/definitions/include_list'
               type:

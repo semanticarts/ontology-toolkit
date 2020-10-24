@@ -34,7 +34,7 @@ setuptools.setup(
     ],
     package_data={
         'onto_tool': [
-            'bundle_schema.json'
+            'bundle_schema.yaml'
         ]
     },
     entry_points={
