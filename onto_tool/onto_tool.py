@@ -808,10 +808,14 @@ def __verify_shacl__(action, variables):
     data_graph = __build_graph_from_inputs__(action, variables)
     shape_graph = __build_graph_from_inputs__(action['shapes'], variables)
 
+    logging.debug("Data graph has %s triples", sum(1 for triple in data_graph))
+    logging.debug("Shape graph has %s triples", sum(1 for triple in shape_graph))
+
     conforms, results_graph, results_text = \
         pyshacl.validate(
             data_graph, shacl_graph=shape_graph,
-            inference='rdfs', abort_on_error=False, meta_shacl=False,
+            inference=None if 'inference' not in action else action['inference'],
+            abort_on_error=False, meta_shacl=False,
             advanced=False, js=False, debug=False)
 
     if not conforms:

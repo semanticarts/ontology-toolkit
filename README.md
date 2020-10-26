@@ -298,10 +298,24 @@ one of the following values:
           }}
         ```
       * If `queries` is provided, a list of queries will be built from the `source` and `includes`
-        sub-options.
+        sub-options. The queries will be executed in order, and the first query that produces
+        a failing result will cause `verify` to abort.
     * If `type` is `ask`, one or more SPARQL `ASK` queries will be executed, and if any of them return
       a result that does not match the required `expected` option, the bundle will terminate. Queries are
-      specified similarly to the `select` validation.
+      specified similarly to the `select` validation. For example:
+      ```yaml
+      actions:
+        - action: 'verify'
+          type: 'ask'
+          source: '{input}'
+          includes:
+            - 'verify_data.ttl'
+          queries:
+            source: '{input}'
+            includes:
+              - '*_ask_query.rq'
+          expected: false
+      ```
     * If `type` is `shacl`, a SHACL shape graph will be constructed from the file specified via the `shapes`
       option (which must have a `source`, and optionally `includes`), with the bundle terminating if
       a non-empty validation report is produced. The report is emitted to the log, and saved as Turtle to
@@ -309,6 +323,7 @@ one of the following values:
       ```yaml
       - action: 'verify'
         type: 'shacl'
+        inference: 'rdfs'
         source: '{input}'
         includes:
           - 'verify_data.ttl'
@@ -316,3 +331,9 @@ one of the following values:
         shapes:
           source: '{input}/verify_shacl_shapes.ttl'
       ```
+      If the `inference` option is provided, the reasoner will be run on the graph prior
+      to applying the SHACL rules. The valid values are:
+        * `rdfs`,
+        * `owlrl`,
+        * `both`, or
+        * `none` (default).

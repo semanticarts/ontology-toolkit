@@ -189,6 +189,13 @@ properties:
                   properties:
                     target:
                       $ref: '#/definitions/non_empty_string'
+                    inference:
+                      type: string
+                      enum:
+                        - "rdfs"
+                        - "owlrl"
+                        - "both"
+                        - "none"
                     shapes:
                       type: object
                       properties:
