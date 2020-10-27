@@ -167,6 +167,8 @@ properties:
                   allOf:
                     - $ref: '#/definitions/multi_query_spec'
                     - properties:
+                        stopOnFail:
+                          type: boolean
                         expected:
                           type: boolean
                       required:
@@ -179,6 +181,8 @@ properties:
                   allOf:
                     - $ref: '#/definitions/multi_query_spec'
                     - properties:
+                        stopOnFail:
+                          type: boolean
                         target:
                           $ref: '#/definitions/non_empty_string'
               - if:

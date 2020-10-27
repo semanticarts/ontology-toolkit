@@ -4,13 +4,13 @@ variables:
   output: "tests/bundle"
 actions:
   - action: 'verify'
-    type: 'ask'
+    type: 'select'
     source: '{input}'
     includes:
       - 'verify_data.ttl'
+    target: '{output}/verify_select_results'
     stopOnFail: false
     queries:
       source: '{input}'
       includes:
-        - '*_ask_query.rq'
-    expected: false
+        - 'verify_*_select_query.rq'

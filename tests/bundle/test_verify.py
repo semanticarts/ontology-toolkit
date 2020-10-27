@@ -31,7 +31,33 @@ def test_verify_ask(caplog):
         ])
     assert wrapped_exit.type == SystemExit
     assert wrapped_exit.value.code == 1
-    assert re.search(r'Verification ASK .* False', caplog.text)
+    assert re.search(r'Verification ASK .*verify_label.* False', caplog.text)
+    assert re.search(r'Verification ASK .*verify_domain.* False', caplog.text)
+
+
+def test_verify_select_multiple(caplog):
+    with raises(SystemExit) as wrapped_exit:
+        onto_tool.main([
+            'bundle', 'tests/bundle/verify_select_multiple.yaml'
+        ])
+    assert wrapped_exit.type == SystemExit
+    assert wrapped_exit.value.code == 1
+
+    logs = caplog.text
+    assert re.search(r'Verification query .*verify_label_select', logs)
+    assert 'http://example.com/unlabeled' in logs
+    assert re.search(r'Verification query .*verify_domain_select', logs)
+    assert 'http://example.com/nonexistent' in logs
+
+    with open('tests/bundle/verify_select_results/verify_label_select_query.csv') as errors:
+        actual = list(row for row in csv.DictReader(errors))
+    expected = [{'unlabeled': 'http://example.com/unlabeled'}]
+    assert actual == expected
+
+    with open('tests/bundle/verify_select_results/verify_domain_select_query.csv') as errors:
+        actual = list(row for row in csv.DictReader(errors))
+    expected = [{'domain': 'http://example.com/nonexistent'}]
+    assert actual == expected
 
 
 def test_verify_shacl(caplog):

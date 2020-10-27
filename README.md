@@ -298,11 +298,27 @@ one of the following values:
           }}
         ```
       * If `queries` is provided, a list of queries will be built from the `source` and `includes`
-        sub-options. The queries will be executed in order, and the first query that produces
-        a failing result will cause `verify` to abort.
-    * If `type` is `ask`, one or more SPARQL `ASK` queries will be executed, and if any of them return
-      a result that does not match the required `expected` option, the bundle will terminate. Queries are
-      specified similarly to the `select` validation. For example:
+        sub-options. The queries will be executed in order specified. If `stopOnFail` is omitted or
+        is `true`, the first  query that produces a failing result will cause `verify` to abort. If
+        `stopOnFail` is `false`, all queries will be executed regardless of failures, and the value
+        of `target` is treated as a directory where the results of _each_ failing query will be written.
+        ```yaml
+          - action: 'verify'
+            type: 'select'
+            source: '{input}'
+            includes:
+              - 'verify_data.ttl'
+            target: '{output}/verify_select_results'
+            stopOnFail: false
+            queries:
+              source: '{input}'
+              includes:
+                - 'verify_*_select_query.rq'
+        ```        
+    * If `type` is `ask`, one or more SPARQL `ASK` queries will be executed. Queries are
+      specified similarly to the `select` validation. Unless `stopOnFail` is set to `false`, the first
+      query producing a result that does not match the required `expected` option, the bundle will terminate.
+      For example:
       ```yaml
       actions:
         - action: 'verify'

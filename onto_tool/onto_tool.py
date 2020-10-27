@@ -182,6 +182,18 @@ def configure_arg_parser():
     return parser
 
 
+def parse_rdf(g: Graph, onto_file, rdf_format=None):
+    from rdflib.plugins.parsers.notation3 import BadSyntax
+    try:
+        g.parse(onto_file, format=rdf_format if rdf_format is not None else guess_format(onto_file))
+    except BadSyntax as se:
+        text = se._str.decode('utf-8')
+        if len(text) > 30:
+            text = text[0:27] + '...'
+        logging.error("Error parsing %s at %d: %s: %s", onto_file, se.lines + 1, se._why, text)
+        exit(1)
+
+
 def findSingleOntology(g, onto_file):
     """Verify that file has a single ontology defined and return the IRI."""
     ontologies = list(g.subjects(RDF.type, OWL.Ontology))
@@ -422,8 +434,8 @@ def generateGraphic(fileRefs, compact, output, version):
     None.
 
     """
-    allFiles = [file for ref in fileRefs for file in expandFileRef(ref)]
-    og = OntoGraf(allFiles, outpath=output, wee=compact, version=version)
+    all_files = [file for ref in fileRefs for file in expandFileRef(ref)]
+    og = OntoGraf(all_files, outpath=output, wee=compact, version=version)
     og.gather_info()
     og.create_graf()
 
@@ -483,7 +495,7 @@ def __perform_export__(output, output_format, paths, context=None,
         parse_graph = g
 
     for onto_file in [file for ref in paths for file in expandFileRef(ref)]:
-        parse_graph.parse(onto_file, format=guess_format(onto_file))
+        parse_rdf(parse_graph, onto_file)
 
     # Remove dep versions
     if strip_versions:
@@ -624,7 +636,7 @@ def __bundle_transform_sparql__(action, tool, variables):
         g = Graph()
         onto_file = in_out['inputFile']
         rdf_format = guess_format(onto_file)
-        g.parse(onto_file, format=rdf_format)
+        parse_rdf(g, onto_file, rdf_format=rdf_format)
 
         g.update(
             parsed_query,
@@ -649,7 +661,7 @@ def __bundle_defined_by__(action, variables):
         g = Graph()
         onto_file = in_out['inputFile']
         rdf_format = guess_format(onto_file)
-        g.parse(onto_file, format=rdf_format)
+        parse_rdf(g, onto_file, rdf_format)
 
         # locate ontology
         ontology = findSingleOntology(g, onto_file)
@@ -762,8 +774,7 @@ def __build_graph_from_inputs__(action, variables):
     g = Graph()
     for in_out in __bundle_file_list(action, variables, ignore_target=True):
         onto_file = in_out['inputFile']
-        rdf_format = guess_format(onto_file)
-        g.parse(onto_file, format=rdf_format)
+        parse_rdf(g, onto_file)
     return g
 
 
@@ -782,6 +793,8 @@ def __verify_select__(action, variables):
 
     g = __build_graph_from_inputs__(action, variables)
 
+    fail_count = 0
+    stop_on_fail = __boolean_option__(action, 'stopOnFail', variables, default=True)
     for query_text in queries:
         parsed_query = prepareQuery(query_text[1])
         results = g.query(
@@ -792,16 +805,30 @@ def __verify_select__(action, variables):
             output = [results.vars]
             output.extend(results)
             if (len(output)) > 1:
+                fail_count += 1
                 serialized = io.StringIO()
                 __serialize_select_results__(serialized, results)
                 if 'target' in action:
-                    with open(action['target'].format(**variables), 'w') as select_output:
-                        select_output.write(serialized.getvalue())
+                    if not stop_on_fail:
+                        # Treat 'target' as directory.
+                        target_dir = action['target'].format(**variables)
+                        if not isdir(target_dir):
+                            os.mkdir(target_dir)
+                        base, _ = splitext(basename(query_text[0]))
+                        with open(join(target_dir, base + '.csv'), 'w') as select_output:
+                            select_output.write(serialized.getvalue())
+                    else:
+                        with open(action['target'].format(**variables), 'w') as select_output:
+                            select_output.write(serialized.getvalue())
                 logging.error("Verification query %s produced non-empty results:\n%s",
                               query_text[0], serialized.getvalue())
-                exit(1)
+                if stop_on_fail:
+                    break
         else:
             raise Exception('Invalid query for SELECT verify: ' + query_text)
+
+    if fail_count > 0:
+        exit(1)
 
 
 def __verify_shacl__(action, variables):
@@ -832,6 +859,8 @@ def __verify_ask__(action, variables):
 
     g = __build_graph_from_inputs__(action, variables)
 
+    fail_count = 0
+    stop_on_fail = __boolean_option__(action, 'stopOnFail', variables, default=True)
     for query_text in queries:
         parsed_query = prepareQuery(query_text[1])
         results = g.query(
@@ -840,12 +869,17 @@ def __verify_ask__(action, variables):
 
         if results.askAnswer is not None:
             if results.askAnswer != action['expected']:
+                fail_count += 1
                 logging.error(
                     "Verification ASK query %s did not match expected result %s",
                     query_text[0], action['expected'])
-                exit(1)
+                if stop_on_fail:
+                    break
         else:
             raise Exception('Invalid query for ASK verify: ' + query_text)
+
+    if fail_count > 0:
+        exit(1)
 
 
 def __build_query_list__(action, variables):
@@ -865,12 +899,12 @@ def __build_query_list__(action, variables):
     return queries
 
 
-def __boolean_option__(action, key, variables):
+def __boolean_option__(action, key, variables, default=False):
     if key not in action:
-        return False
+        return default
     value = action[key]
     if value is None:
-        return False
+        return default
     if isinstance(value, bool):
         return value
     return str(value.format(**variables)).lower() in ("yes", "true", "t", "1")
@@ -996,7 +1030,7 @@ def updateOntology(args, output_format):
     for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
         g = Graph()
         orig_format = guess_format(onto_file)
-        g.parse(onto_file, format=orig_format)
+        parse_rdf(g, onto_file, orig_format)
         logging.debug(f'{onto_file} has {len(g)} triples')
 
         # locate ontology
