@@ -16,7 +16,7 @@ import yaml
 import csv
 from jsonschema import validate
 from rdflib import Graph, ConjunctiveGraph, URIRef, Literal
-from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
+from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD, Namespace
 from rdflib.util import guess_format
 from rdflib.plugins.sparql import prepareQuery
 import pyshacl
@@ -87,6 +87,8 @@ def configure_arg_parser():
         '-i', '--in-place', action="store_true",
         help="Overwrite each input file with update, preserving format")
 
+    update_parser.add_argument('--debug', action="store_true",
+                               help="Emit verbose debug output")
     update_parser.add_argument('-o', '--output',
                                type=argparse.FileType('w', encoding='utf-8'),
                                default=sys.stdout,
@@ -130,6 +132,8 @@ def configure_arg_parser():
     format_parser.add_argument('-c', '--context', action=UriValidator,
                                help='Export as N-Quads in CONTEXT.')
 
+    export_parser.add_argument('--debug', action="store_true",
+                               help="Emit verbose debug output")
     export_parser.add_argument('-o', '--output',
                                type=argparse.FileType('w', encoding='utf-8'),
                                default=sys.stdout,
@@ -158,6 +162,8 @@ def configure_arg_parser():
                                help="Ontology file or directory containing OWL files")
 
     bundle_parser = subparsers.add_parser('bundle', help='Bundle ontology for release')
+    bundle_parser.add_argument('--debug', action="store_true",
+                               help="Emit verbose debug output")
     bundle_parser.add_argument('-v', '--variable', action="append",
                                dest='variables',
                                metavar=('VARIABLE', 'VALUE'),
@@ -169,6 +175,8 @@ def configure_arg_parser():
     graphic_parser = subparsers.add_parser('graphic',
                                            help='Create PNG graphic and dot'
                                            ' file from OWL files')
+    graphic_parser.add_argument('--debug', action="store_true",
+                               help="Emit verbose debug output")
     graphic_parser.add_argument('-o', '--output', action="store",
                                 default=os.getcwd(),
                                 help="Output directory for generated graphics")
@@ -218,7 +226,7 @@ def set_version(g, ontology, ontology_iri, version):
 
     version_iri = URIRef(f"{ontology_iri}{version}")
     g.add((ontology, OWL.versionIRI, version_iri))
-    logging.debug(f'versionIRI {version_iri} added for {ontology}')
+    logging.info(f'versionIRI {version_iri} added for {ontology}')
 
 
 def set_version_info(g, ontology, version_info):
@@ -240,7 +248,7 @@ def set_version_info(g, ontology, version_info):
     if not version_info:
         version_info = "Version " + version
     g.add((ontology, OWL.versionInfo, Literal(version_info, datatype=XSD.string)))
-    logging.debug(f'versionInfo "{version_info}" added for {ontology}')
+    logging.info(f'versionInfo "{version_info}" added for {ontology}')
 
 
 def add_defined_by(g, ontology_iri, mode='strict', replace=False, versioned=False):
@@ -360,7 +368,7 @@ def cleanMergeArtifacts(g, iri, version):
         logging.debug(f'Removing existing ontology {o}')
         for t in list(g.triples((o, None, None))):
             g.remove(t)
-    logging.debug(f'Creating new ontology {iri}:{version}')
+    logging.info(f'Creating new ontology {iri}:{version}')
     g.add((iri, RDF.type, OWL.Ontology))
     g.add((iri, OWL.versionIRI, URIRef(str(iri) + version)))
     g.add((iri, OWL.versionInfo, Literal("Created by merge tool.", datatype=XSD.string)))
@@ -590,7 +598,7 @@ def __bundle_file_list(action, variables, ignore_target=False):
 
 
 def __bundle_transform__(action, tools, variables):
-    logging.debug('Transform %s', action)
+    logging.info('Transform %s', action)
     tool = next((t for t in tools if t['name'] == action['tool']), None)
     if not tool:
         raise Exception('Missing tool ', action['tool'])
@@ -656,7 +664,7 @@ def __bundle_transform_sparql__(action, tool, variables):
 
 
 def __bundle_defined_by__(action, variables):
-    logging.debug('Add definedBy %s', action)
+    logging.info('Add definedBy %s', action)
     for in_out in __bundle_file_list(action, variables):
         g = Graph()
         onto_file = in_out['inputFile']
@@ -683,7 +691,7 @@ def __bundle_defined_by__(action, variables):
 
 
 def __bundle_copy__(action, variables):
-    logging.debug('Copy %s', action)
+    logging.info('Copy %s', action)
     for in_out in __bundle_file_list(action, variables):
         if isfile(in_out['inputFile']):
             shutil.copy(in_out['inputFile'], in_out['outputFile'])
@@ -694,7 +702,7 @@ def __bundle_copy__(action, variables):
 
 
 def __bundle_move__(action, variables):
-    logging.debug('Move %s', action)
+    logging.info('Move %s', action)
     for in_out in __bundle_file_list(action, variables):
         if isfile(in_out['inputFile']):
             shutil.move(in_out['inputFile'], in_out['outputFile'])
@@ -705,7 +713,7 @@ def __bundle_move__(action, variables):
 
 
 def __bundle_markdown__(action, variables):
-    logging.debug('Markdown %s', action)
+    logging.info('Markdown %s', action)
     conv = md2html()
     filepath_in = action['source'].format(**variables)
     filepath_out = action['target'].format(**variables)
@@ -717,7 +725,7 @@ def __bundle_markdown__(action, variables):
 
 
 def __bundle_graph__(action, variables):
-    logging.debug('Graph %s', action)
+    logging.info('Graph %s', action)
     documentation = action['target'].format(**variables)
     version = action['version'].format(**variables)
     title = action['title'].format(**variables)
@@ -731,7 +739,7 @@ def __bundle_graph__(action, variables):
 
 
 def __bundle_sparql__(action, variables):
-    logging.debug('SPARQL %s', action)
+    logging.info('SPARQL %s', action)
     output = action['target'].format(**variables)
     query = action['query'].format(**variables)
     if isfile(query):
@@ -779,11 +787,13 @@ def __build_graph_from_inputs__(action, variables):
 
 
 def __bundle_verify__(action, variables):
-    logging.debug('Verify %s', action)
+    logging.info('Verify %s', action)
     if action['type'] == 'select':
         __verify_select__(action, variables)
     elif action['type'] == 'ask':
         __verify_ask__(action, variables)
+    elif action['type'] == 'construct':
+        __verify_construct__(action, variables)
     elif action['type'] == 'shacl':
         __verify_shacl__(action, variables)
 
@@ -831,6 +841,49 @@ def __verify_select__(action, variables):
         exit(1)
 
 
+def __verify_construct__(action, variables):
+    queries = __build_query_list__(action, variables)
+
+    g = __build_graph_from_inputs__(action, variables)
+
+    fail_count = 0
+    stop_on_fail = __boolean_option__(action, 'stopOnFail', variables, default=True)
+    for query_text in queries:
+        parsed_query = prepareQuery(query_text[1])
+        results = g.query(
+            parsed_query,
+            initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+
+        if results.graph is not None:
+            if len(results.graph):
+                fail_count += 1
+                results.graph.bind("skos", SKOS)
+                results.graph.bind("sh", Namespace('http://www.w3.org/ns/shacl#'))
+                serialized = __format_validation_results__(results.graph)
+                if serialized.count('\n') < 2:
+                    logging.warning("CONSTRUCT verification %s did not produce well-formed ViolationReport",
+                                    query_text[0])
+                if 'target' in action:
+                    if not stop_on_fail:
+                        # Treat 'target' as directory.
+                        target_dir = action['target'].format(**variables)
+                        if not isdir(target_dir):
+                            os.mkdir(target_dir)
+                        base, _ = splitext(basename(query_text[0]))
+                        construct_output = join(target_dir, base + '.ttl')
+                    else:
+                        construct_output = action['target'].format(**variables)
+                    results.graph.serialize(construct_output, format='turtle', encoding='utf-8')
+                logging.error("Verification query %s produced non-empty results:\n%s", query_text[0], serialized)
+                if stop_on_fail:
+                    break
+        else:
+            raise Exception('Invalid query for SELECT verify: ' + query_text)
+
+    if fail_count > 0:
+        exit(1)
+
+
 def __verify_shacl__(action, variables):
     data_graph = __build_graph_from_inputs__(action, variables)
     shape_graph = __build_graph_from_inputs__(action['shapes'], variables)
@@ -838,20 +891,63 @@ def __verify_shacl__(action, variables):
     logging.debug("Data graph has %s triples", sum(1 for triple in data_graph))
     logging.debug("Shape graph has %s triples", sum(1 for triple in shape_graph))
 
-    conforms, results_graph, results_text = \
+    conforms, results_graph, _ = \
         pyshacl.validate(
             data_graph, shacl_graph=shape_graph,
             inference=None if 'inference' not in action else action['inference'],
             abort_on_error=False, meta_shacl=False,
-            advanced=False, js=False, debug=False)
+            advanced=True, js=False, debug=False)
 
     if not conforms:
         if 'target' in action:
             results_graph.serialize(
                 destination=action['target'].format(**variables),
                 format='turtle', encoding='utf-8')
-        logging.error("SHACL verification produced non-empty results:\n%s", results_text)
+        result_table = __format_validation_results__(results_graph)
+        logging.error("SHACL verification produced non-empty results:\n%s", result_table)
         exit(1)
+
+
+def __format_validation_results__(results_graph):
+    """Format validation results as text table.
+
+    Adjusts the width of the table so that every row fits
+    """
+    result_table = io.StringIO()
+    violations = results_graph.query("""
+            prefix sh: <http://www.w3.org/ns/shacl#>
+            SELECT ?focus ?path ?value ?severity ?message WHERE {
+                ?violation
+                   sh:focusNode ?focus ;
+                   sh:resultPath ?path ;
+                   sh:resultMessage ?message ;
+                   sh:resultSeverity ?severity .
+                OPTIONAL { ?violation sh:value ?value }
+            }
+        """)
+    rows = []
+    headers = ['Focus', 'Path', 'Value', 'Severity', 'Message']
+    max_length = [len(h) for h in headers]
+
+    def format_value(v):
+        return '' if v is None else str(v) if isinstance(v, Literal) else v.n3(results_graph.namespace_manager)
+
+    for row in violations:
+        as_text = [
+            row.focus.n3(results_graph.namespace_manager),
+            row.path.n3(results_graph.namespace_manager),
+            format_value(row.value),
+            row.severity.n3(results_graph.namespace_manager),
+            str(row.message)
+        ]
+        # Extend the width of each column to contain the longest value.
+        max_length = [max(a, b) for a, b in zip(max_length, [len(s) for s in as_text])]
+        rows.append(as_text)
+    row_format = " ".join(f"{{:{length}.{length}}}" for length in max_length) + "\n"
+    result_table.write(row_format.format(*headers))
+    for row in rows:
+        result_table.write(row_format.format(*row))
+    return result_table.getvalue()
 
 
 def __verify_ask__(action, variables):
@@ -911,7 +1007,7 @@ def __boolean_option__(action, key, variables, default=False):
 
 
 def __bundle_export__(action, variables):
-    logging.debug('Export %s', action)
+    logging.info('Export %s', action)
     if __boolean_option__(action, 'compress', variables):
         output = gzip.open(action['target'].format(**variables), 'wt', encoding="utf-8")
     else:
@@ -1082,9 +1178,12 @@ def updateOntology(args, output_format):
 
 def main(arguments):
     """Do the thing."""
-    logging.basicConfig(level=logging.DEBUG)
-
     args = configure_arg_parser().parse_args(args=arguments)
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
 
     if args.command == 'bundle':
         bundleOntology(args.variables, args.bundle)

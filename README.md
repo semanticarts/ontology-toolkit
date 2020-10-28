@@ -32,8 +32,9 @@ optional arguments:
 The `update` sub-command modifies ontology version and dependency information
 ```
 $ onto_tool update -h
-usage: onto_tool update [-h] [-f {xml,turtle,nt} | -i] [-o OUTPUT]
-                        [-b [{all,strict}]] [-v SET_VERSION]
+usage: onto_tool update [-h] [-f {xml,turtle,nt} | -i] [--debug] [-o OUTPUT]
+                        [-b [{all,strict}]] [--retain-definedBy]
+                        [--versioned-definedBy] [-v SET_VERSION]
                         [--version-info [VERSION_INFO]]
                         [-d DEPENDENCY VERSION]
                         [ontology [ontology ...]]
@@ -47,6 +48,7 @@ optional arguments:
                         Output format
   -i, --in-place        Overwrite each input file with update, preserving
                         format
+  --debug               Emit verbose debug output
   -o OUTPUT, --output OUTPUT
                         Path to output file. Will be ignored if --in-place is
                         specified.
@@ -72,9 +74,9 @@ optional arguments:
 
 The `export` sub-command will transform the ontology into the desired format, and remove version information, as required by tools such as Top Braid Composer.
 ```
-usage: onto_tool export [-h] [-f {xml,turtle,nt} | -c CONTEXT] [-o OUTPUT]
-                        [-s] [-m IRI VERSION] [-b [{all,strict}]]
-                        [--retain-definedBy]
+usage: onto_tool export [-h] [-f {xml,turtle,nt} | -c CONTEXT] [--debug]
+                        [-o OUTPUT] [-s] [-m IRI VERSION] [-b [{all,strict}]]
+                        [--retain-definedBy] [--versioned-definedBy]
                         [ontology [ontology ...]]
 
 positional arguments:
@@ -86,6 +88,7 @@ optional arguments:
                         Output format
   -c CONTEXT, --context CONTEXT
                         Export as N-Quads in CONTEXT.
+  --debug               Emit verbose debug output
   -o OUTPUT, --output OUTPUT
                         Path to output file.
   -s, --strip-versions  Remove versions from imports.
@@ -109,7 +112,7 @@ The `graphic` sub-command will create either a comprehensive diagram showing ont
 
 ```
 $ onto_tool graphic -h
-usage: onto_tool graphic [-h] [-o OUTPUT] [-v VERSION] [-w]
+usage: onto_tool graphic [-h] [--debug] [-o OUTPUT] [-v VERSION] [-w]
                          [ontology [ontology ...]]
 
 positional arguments:
@@ -117,6 +120,7 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
+  --debug               Emit verbose debug output
   -o OUTPUT, --output OUTPUT
                         Output directory for generated graphics
   -v VERSION, --version VERSION
@@ -131,13 +135,14 @@ The `bundle` sub-command supports creating an ontology deployment containing bot
 
 ```
 $ onto_tool bundle -h
-usage: onto_tool bundle [-h] [-v VARIABLE VALUE] bundle
+usage: onto_tool bundle [-h] [--debug] [-v VARIABLE VALUE] bundle
 
 positional arguments:
   bundle                JSON or YAML bundle definition
 
 optional arguments:
   -h, --help            show this help message and exit
+  --debug               Emit verbose debug output
   -v VARIABLE VALUE, --variable VARIABLE VALUE
                         Set value of VARIABLE to VALUE
 ```
@@ -205,8 +210,9 @@ All tools require a `name` by which they are referenced in `transform` actions. 
 
 #### Actions
 
-Actions are executed in the order they are listed. Each action must have an `action` attribute, which can be 
-one of the following values:
+Actions are executed in the order they are listed. Each action must have an `action` attribute.
+
+##### Basic File Manipulation
 - `mkdir`, which requires a `directory` attribute to specify the path of the directory to be created 
   (only if it doesn't already exist)
 - `copy`, which copies files into the bundle, and supports the following arguments:
@@ -232,6 +238,9 @@ one of the following values:
     supported as shown in the `rename` documentation.
 - `move`, which moves files according the provided options, which are identical to the ones supported
   by `copy`.
+  
+##### RDF Transformation
+
 - `definedBy`, which inspects each input file to identify a single defined ontology, and then
   adds a `rdfs:isDefinedBy` property to every `owl:Class`, `owl:ObjectProperty`, `owl:DatatypeProperty`
   and `owl:AnnotationProperty` defined in the file referencing the identified ontology. Existing
@@ -266,12 +275,6 @@ one of the following values:
     actions, with each input and output path bound into the `inputFile` and `outputFile` variables
     before the tool arguments are interpreted.
   - `replace` and `rename`, which are applied after the tool invocation, and work as described above.
-- `markdown` transforms a `.md` file referenced in `source` into an HTML output specified in `target`.
-- `graph` reads RDF files provided via the `source` and `includes` options and generates a graphical
-  representation of the ontology, as in the `graphic` sub-command described above. Both `.dot` and
-  `.png` outputs are written to the directory specified in the `target` option, and `title` and 
-  `version` attributes configure the title on the generated graph. If `compact` is specified as
-  `True`, a concise graph including only ontology names and imports is generated.
 - `sparql` reads RDF files provided via the `source` and `includes` options and executes a SPARQL
   query on the resulting combined graph.
     * If the `query` option is a valid file path, the query is read from that file,
@@ -279,77 +282,90 @@ one of the following values:
     * `SELECT` query results are stored in the file specified via `target` as a CSV.
     * RDF results from a `CONSTRUCT` query are
   stored as either Turtle, RDF/XML or N-Triples, depending on the `format` option (`turtle`, `xml`, or `nt`).
-- `verify` reads RDF files provided via the `source` and `includes` options and performs validation on the
-  resulting combined graph. If the validation fails, the bundle process exits with a non-zero status and
-  does not execute subsequent actions. Three different types of verification are supported, based on the 
-  value of the `type` option:
-    * If `type` is `select`, one or more SPARQL `SELECT` queries are executed against the graph, and the
-      first query to return a non-empty result will terminate the bundle. The results of the query will
-      be output to the log, and also written as CSV to a file path specified by the `target` option, if
-      provided. Queries can be specified in one of two ways (only one can be present):
-      * If the `query` option is a valid file path, the query is read from that file,
-        otherwise the contents of the `query` option are interpreted as the query, e.g.
-        ```yaml
-        query: >
-          prefix skos: <http://www.w3.org/2004/02/skos/core#>
-          select ?unlabeled where {{
-            ?unlabeled a ?type .
-            filter not exists {{ ?unlabeled skos:prefLabel ?label }}
-          }}
-        ```
-      * If `queries` is provided, a list of queries will be built from the `source` and `includes`
-        sub-options. The queries will be executed in order specified. If `stopOnFail` is omitted or
-        is `true`, the first  query that produces a failing result will cause `verify` to abort. If
-        `stopOnFail` is `false`, all queries will be executed regardless of failures, and the value
-        of `target` is treated as a directory where the results of _each_ failing query will be written.
-        ```yaml
-          - action: 'verify'
-            type: 'select'
-            source: '{input}'
-            includes:
-              - 'verify_data.ttl'
-            target: '{output}/verify_select_results'
-            stopOnFail: false
-            queries:
-              source: '{input}'
-              includes:
-                - 'verify_*_select_query.rq'
-        ```        
-    * If `type` is `ask`, one or more SPARQL `ASK` queries will be executed. Queries are
-      specified similarly to the `select` validation. Unless `stopOnFail` is set to `false`, the first
-      query producing a result that does not match the required `expected` option, the bundle will terminate.
-      For example:
-      ```yaml
-      actions:
-        - action: 'verify'
-          type: 'ask'
-          source: '{input}'
-          includes:
-            - 'verify_data.ttl'
-          queries:
-            source: '{input}'
-            includes:
-              - '*_ask_query.rq'
-          expected: false
-      ```
-    * If `type` is `shacl`, a SHACL shape graph will be constructed from the file specified via the `shapes`
-      option (which must have a `source`, and optionally `includes`), with the bundle terminating if
-      a non-empty validation report is produced. The report is emitted to the log, and saved as Turtle to
-      the path specified in the `target` option if it's provided. For example:
-      ```yaml
+  
+##### Utility Actions
+- `markdown` transforms a `.md` file referenced in `source` into an HTML output specified in `target`.
+- `graph` reads RDF files provided via the `source` and `includes` options and generates a graphical
+  representation of the ontology, as in the `graphic` sub-command described above. Both `.dot` and
+  `.png` outputs are written to the directory specified in the `target` option, and `title` and 
+  `version` attributes configure the title on the generated graph. If `compact` is specified as
+  `True`, a concise graph including only ontology names and imports is generated.
+
+##### Validation
+The `verify` action reads RDF files provided via the `source` and `includes` options and performs validation on the
+resulting combined graph. If the validation fails, the bundle process exits with a non-zero status and
+does not execute subsequent actions. The type of verification performed depends on the 
+value of the `type` option:
+* If `type` is `select`, one or more SPARQL `SELECT` queries are executed against the graph, and the
+  first query to return a non-empty result will terminate the bundle. The results of the query will
+  be output to the log, and also written as CSV to a file path specified by the `target` option, if
+  provided. Queries can be specified in one of two ways (only one can be present):
+  * If the `query` option is a valid file path, the query is read from that file,
+    otherwise the contents of the `query` option are interpreted as the query, e.g.
+    ```yaml
+    query: >
+      prefix skos: <http://www.w3.org/2004/02/skos/core#>
+      select ?unlabeled where {{
+        ?unlabeled a ?type .
+        filter not exists {{ ?unlabeled skos:prefLabel ?label }}
+      }}
+    ```
+  * If `queries` is provided, a list of queries will be built from the `source` and `includes`
+    sub-options. The queries will be executed in order specified. If `stopOnFail` is omitted or
+    is `true`, the first  query that produces a failing result will cause `verify` to abort. If
+    `stopOnFail` is `false`, all queries will be executed regardless of failures, and the value
+    of `target` is treated as a directory where the results of _each_ failing query will be written.
+    ```yaml
       - action: 'verify'
-        type: 'shacl'
-        inference: 'rdfs'
+        type: 'select'
         source: '{input}'
         includes:
           - 'verify_data.ttl'
-        target: '{output}/verify_shacl_errors.ttl'
-        shapes:
-          source: '{input}/verify_shacl_shapes.ttl'
-      ```
-      If the `inference` option is provided, the reasoner will be run on the graph prior
-      to applying the SHACL rules. The valid values are:
-        * `rdfs`,
-        * `owlrl`,
-        * `both`, or
-        * `none` (default).
+        target: '{output}/verify_select_results'
+        stopOnFail: false
+        queries:
+          source: '{input}'
+          includes:
+            - 'verify_*_select_query.rq'
+    ```
+* If `type` is `construct`, the queries are expected to `CONSTRUCT` a [SHACL ValidationReport](https://www.w3.org/TR/shacl/#validation-report).
+  The validation will be considered as a failure if the resulting graph is non-empty. `target`,
+  `stopOnFail` and `query`/`queries` are handled same as `select` validation. 
+* If `type` is `ask`, one or more SPARQL `ASK` queries will be executed. Queries are
+  specified similarly to the `select` validation. Unless `stopOnFail` is set to `false`, the first
+  query producing a result that does not match the required `expected` option, the bundle will terminate.
+  For example:
+  ```yaml
+  actions:
+    - action: 'verify'
+      type: 'ask'
+      source: '{input}'
+      includes:
+        - 'verify_data.ttl'
+      queries:
+        source: '{input}'
+        includes:
+          - '*_ask_query.rq'
+      expected: false
+  ```
+* If `type` is `shacl`, a SHACL shape graph will be constructed from the file specified via the `shapes`
+  option (which must have a `source`, and optionally `includes`), with the bundle terminating if
+  a non-empty validation report is produced. The report is emitted to the log, and saved as Turtle to
+  the path specified in the `target` option if it's provided. For example:
+  ```yaml
+  - action: 'verify'
+    type: 'shacl'
+    inference: 'rdfs'
+    source: '{input}'
+    includes:
+      - 'verify_data.ttl'
+    target: '{output}/verify_shacl_errors.ttl'
+    shapes:
+      source: '{input}/verify_shacl_shapes.ttl'
+  ```
+  If the `inference` option is provided, the reasoner will be run on the graph prior
+  to applying the SHACL rules. The valid values are:
+    * `rdfs`,
+    * `owlrl`,
+    * `both`, or
+    * `none` (default).

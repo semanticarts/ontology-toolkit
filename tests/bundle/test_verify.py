@@ -60,6 +60,37 @@ def test_verify_select_multiple(caplog):
     assert actual == expected
 
 
+def test_verify_construct(caplog):
+    with raises(SystemExit) as wrapped_exit:
+        onto_tool.main([
+            'bundle', 'tests/bundle/verify_construct.yaml'
+        ])
+    assert wrapped_exit.type == SystemExit
+    assert wrapped_exit.value.code == 1
+
+    logs = caplog.text
+    assert re.search(r'Verification query .*verify_label_construct', logs)
+    assert 'http://example.com/unlabeled' in logs
+    assert re.search(r'Verification query .*verify_domain_construct', logs)
+    assert 'http://example.com/nonexistent' in logs
+
+    validation_graph = Graph()
+    validation_graph.parse(
+        'tests/bundle/verify_construct_results/verify_label_construct_query.ttl',
+        format='turtle')
+    sh = Namespace('http://www.w3.org/ns/shacl#')
+    errors = [validation_graph.subjects(RDF.type, sh.ValidationResult)]
+    assert len(errors) == 1
+
+    validation_graph = Graph()
+    validation_graph.parse(
+        'tests/bundle/verify_construct_results/verify_domain_construct_query.ttl',
+        format='turtle')
+    sh = Namespace('http://www.w3.org/ns/shacl#')
+    errors = [validation_graph.subjects(RDF.type, sh.ValidationResult)]
+    assert len(errors) == 1
+
+
 def test_verify_shacl(caplog):
     with raises(SystemExit) as wrapped_exit:
         onto_tool.main([
