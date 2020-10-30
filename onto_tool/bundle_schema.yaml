@@ -196,6 +196,11 @@ properties:
                     - properties:
                         stopOnFail:
                           type: boolean
+                        failOn:
+                          type: string
+                          enum:
+                            - "warning"
+                            - "violation"
                         target:
                           $ref: '#/definitions/non_empty_string'
               - if:
@@ -213,6 +218,11 @@ properties:
                         - "owlrl"
                         - "both"
                         - "none"
+                    failOn:
+                      type: string
+                      enum:
+                        - "warning"
+                        - "violation"
                     shapes:
                       type: object
                       properties:

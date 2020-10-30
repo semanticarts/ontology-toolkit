@@ -15,6 +15,7 @@ import json
 import yaml
 import csv
 from jsonschema import validate
+from typing import Tuple
 from rdflib import Graph, ConjunctiveGraph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD, Namespace
 from rdflib.util import guess_format
@@ -848,6 +849,7 @@ def __verify_construct__(action, variables):
 
     fail_count = 0
     stop_on_fail = __boolean_option__(action, 'stopOnFail', variables, default=True)
+    fail_on_warning = 'failOn' in action and action['failOn'] == 'warning'
     for query_text in queries:
         parsed_query = prepareQuery(query_text[1])
         results = g.query(
@@ -856,13 +858,17 @@ def __verify_construct__(action, variables):
 
         if results.graph is not None:
             if len(results.graph):
-                fail_count += 1
                 results.graph.bind("skos", SKOS)
                 results.graph.bind("sh", Namespace('http://www.w3.org/ns/shacl#'))
-                serialized = __format_validation_results__(results.graph)
-                if serialized.count('\n') < 2:
+                serialized, count, violation = __format_validation_results__(results.graph)
+                if not count:
                     logging.warning("CONSTRUCT verification %s did not produce well-formed ViolationReport",
                                     query_text[0])
+                else:
+                    if violation or fail_on_warning:
+                        logging.error("Verification query %s produced non-empty results:\n%s", query_text[0], serialized)
+                    else:
+                        logging.warning("Verification query %s produced non-empty results:\n%s", query_text[0], serialized)
                 if 'target' in action:
                     if not stop_on_fail:
                         # Treat 'target' as directory.
@@ -874,9 +880,10 @@ def __verify_construct__(action, variables):
                     else:
                         construct_output = action['target'].format(**variables)
                     results.graph.serialize(construct_output, format='turtle', encoding='utf-8')
-                logging.error("Verification query %s produced non-empty results:\n%s", query_text[0], serialized)
-                if stop_on_fail:
-                    break
+                if fail_on_warning or violation:
+                    fail_count += 1
+                    if stop_on_fail:
+                        break
         else:
             raise Exception('Invalid query for SELECT verify: ' + query_text)
 
@@ -903,12 +910,20 @@ def __verify_shacl__(action, variables):
             results_graph.serialize(
                 destination=action['target'].format(**variables),
                 format='turtle', encoding='utf-8')
-        result_table = __format_validation_results__(results_graph)
-        logging.error("SHACL verification produced non-empty results:\n%s", result_table)
-        exit(1)
+        result_table, count, violation = __format_validation_results__(results_graph)
+        fail_on_warning = 'failOn' in action and action['failOn'] == 'warning'
+        if not count:
+            logging.warning("SHACL verification did not produce a well-formed ViolationReport:\n%s", result_table)
+        else:
+            if violation or fail_on_warning:
+                logging.error("SHACL verification produced non-empty results:\n%s", result_table)
+            else:
+                logging.warning("SHACL verification produced non-empty results:\n%s", result_table)
+        if fail_on_warning or violation:
+            exit(1)
 
 
-def __format_validation_results__(results_graph):
+def __format_validation_results__(results_graph: Graph) -> Tuple[str, int, bool]:
     """Format validation results as text table.
 
     Adjusts the width of the table so that every row fits
@@ -916,13 +931,14 @@ def __format_validation_results__(results_graph):
     result_table = io.StringIO()
     violations = results_graph.query("""
             prefix sh: <http://www.w3.org/ns/shacl#>
-            SELECT ?focus ?path ?value ?severity ?message WHERE {
+            SELECT ?focus ?path ?value ?component ?severity ?message WHERE {
                 ?violation
                    sh:focusNode ?focus ;
-                   sh:resultPath ?path ;
                    sh:resultMessage ?message ;
                    sh:resultSeverity ?severity .
                 OPTIONAL { ?violation sh:value ?value }
+                OPTIONAL { ?violation sh:resultPath ?path }
+                OPTIONAL { ?violation sh:sourceConstraintComponent ?component }
             }
         """)
     rows = []
@@ -932,13 +948,19 @@ def __format_validation_results__(results_graph):
     def format_value(v):
         return '' if v is None else str(v) if isinstance(v, Literal) else v.n3(results_graph.namespace_manager)
 
+    violation_seen = False
     for row in violations:
+        message = str(row.message)
+        if len(message) > 50:
+            message = message[0:47] + '...'
+        severity = row.severity.n3(results_graph.namespace_manager)
+        violation_seen |= severity == 'sh:Violation'
         as_text = [
             row.focus.n3(results_graph.namespace_manager),
-            row.path.n3(results_graph.namespace_manager),
+            format_value(row.path if row.path else row.component),
             format_value(row.value),
-            row.severity.n3(results_graph.namespace_manager),
-            str(row.message)
+            severity,
+            message
         ]
         # Extend the width of each column to contain the longest value.
         max_length = [max(a, b) for a, b in zip(max_length, [len(s) for s in as_text])]
@@ -947,7 +969,7 @@ def __format_validation_results__(results_graph):
     result_table.write(row_format.format(*headers))
     for row in rows:
         result_table.write(row_format.format(*row))
-    return result_table.getvalue()
+    return result_table.getvalue(), len(rows), violation_seen
 
 
 def __verify_ask__(action, variables):

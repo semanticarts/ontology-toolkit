@@ -328,9 +328,6 @@ value of the `type` option:
           includes:
             - 'verify_*_select_query.rq'
     ```
-* If `type` is `construct`, the queries are expected to `CONSTRUCT` a [SHACL ValidationReport](https://www.w3.org/TR/shacl/#validation-report).
-  The validation will be considered as a failure if the resulting graph is non-empty. `target`,
-  `stopOnFail` and `query`/`queries` are handled same as `select` validation. 
 * If `type` is `ask`, one or more SPARQL `ASK` queries will be executed. Queries are
   specified similarly to the `select` validation. Unless `stopOnFail` is set to `false`, the first
   query producing a result that does not match the required `expected` option, the bundle will terminate.
@@ -349,9 +346,10 @@ value of the `type` option:
       expected: false
   ```
 * If `type` is `shacl`, a SHACL shape graph will be constructed from the file specified via the `shapes`
-  option (which must have a `source`, and optionally `includes`), with the bundle terminating if
-  a non-empty validation report is produced. The report is emitted to the log, and saved as Turtle to
-  the path specified in the `target` option if it's provided. For example:
+  option (which must have a `source`, and optionally `includes`), with the bundle terminating only if
+  any `sh:Violation` results are present, unless the `failOn` option specifies otherwise.`
+  The report is emitted to the log, and saved as Turtle to the path specified in the `target` option if it's provided.
+  For example:
   ```yaml
   - action: 'verify'
     type: 'shacl'
@@ -360,6 +358,7 @@ value of the `type` option:
     includes:
       - 'verify_data.ttl'
     target: '{output}/verify_shacl_errors.ttl'
+    failOn: "warning"
     shapes:
       source: '{input}/verify_shacl_shapes.ttl'
   ```
@@ -369,3 +368,7 @@ value of the `type` option:
     * `owlrl`,
     * `both`, or
     * `none` (default).
+* If `type` is `construct`, the queries are expected to `CONSTRUCT` a [SHACL ValidationReport](https://www.w3.org/TR/shacl/#validation-report).
+  The validation will be considered as a failure if the resulting graph is non-empty. `target`,
+  `stopOnFail` and `query`/`queries` are handled same as `select` validation, and `failOn` is used to determine which
+  violations will terminate execution.
