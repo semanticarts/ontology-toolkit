@@ -1,0 +1,16 @@
+bundle: test
+variables:
+  input: "tests/bundle"
+  output: "tests/bundle"
+actions:
+  - action: 'verify'
+    type: 'construct'
+    source: '{input}'
+    includes:
+      - 'verify_data.ttl'
+    target: '{output}/verify_construct_results'
+    stopOnFail: false
+    queries:
+      source: '{input}'
+      includes:
+        - 'verify_*_construct_query.rq'
