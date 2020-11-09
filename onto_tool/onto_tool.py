@@ -836,7 +836,7 @@ def __verify_select__(action, variables):
                 if stop_on_fail:
                     break
         else:
-            raise Exception('Invalid query for SELECT verify: ' + query_text)
+            raise Exception('Invalid query for SELECT verify: ' + query_text[1] + ', vars is ' + str(results.vars))
 
     if fail_count > 0:
         exit(1)
@@ -966,6 +966,7 @@ def __format_validation_results__(results_graph: Graph) -> Tuple[str, int, bool]
         max_length = [max(a, b) for a, b in zip(max_length, [len(s) for s in as_text])]
         rows.append(as_text)
     row_format = " ".join(f"{{:{length}.{length}}}" for length in max_length) + "\n"
+    rows.sort(key=lambda x: x[0])
     result_table.write(row_format.format(*headers))
     for row in rows:
         result_table.write(row_format.format(*row))
