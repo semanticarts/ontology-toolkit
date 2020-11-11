@@ -1,0 +1,12 @@
+bundle: test
+variables:
+  input: "tests/bundle"
+  output: "tests/bundle"
+actions:
+  - action: 'export'
+    source: '{input}'
+    includes:
+      - 'verify_data.ttl'
+      - 'missing_with_*.ttl'
+      - 'missing_data.ttl'
+    target: "{output}/broken_file_ref_export.ttl"
