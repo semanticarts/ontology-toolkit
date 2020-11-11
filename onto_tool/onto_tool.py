@@ -578,7 +578,10 @@ def __bundle_file_list(action, variables, ignore_target=False):
             # There are times when
             tgt_dir = None
         for pattern in action['includes']:
-            for input_file in glob(os.path.join(src_dir, pattern)):
+            matches = list(glob(os.path.join(src_dir, pattern)))
+            if not matches and not any(wildcard in pattern for wildcard in '[]*?'):
+                logging.warning('%s not found in %s', pattern, src_dir)
+            for input_file in matches:
                 if ignore_target:
                     output_file = None
                 else:
@@ -784,6 +787,7 @@ def __build_graph_from_inputs__(action, variables):
     for in_out in __bundle_file_list(action, variables, ignore_target=True):
         onto_file = in_out['inputFile']
         parse_rdf(g, onto_file)
+    logging.debug("Input graph size is %d", len(g))
     return g
 
 
@@ -807,6 +811,7 @@ def __verify_select__(action, variables):
     fail_count = 0
     stop_on_fail = __boolean_option__(action, 'stopOnFail', variables, default=True)
     for query_text in queries:
+        logging.debug("Executing SELECT query %s", query_text[0])
         parsed_query = prepareQuery(query_text[1])
         results = g.query(
             parsed_query,
@@ -836,7 +841,7 @@ def __verify_select__(action, variables):
                 if stop_on_fail:
                     break
         else:
-            raise Exception('Invalid query for SELECT verify: ' + query_text)
+            raise Exception('Invalid query for SELECT verify: ' + query_text[1] + ', vars is ' + str(results.vars))
 
     if fail_count > 0:
         exit(1)
@@ -851,6 +856,7 @@ def __verify_construct__(action, variables):
     stop_on_fail = __boolean_option__(action, 'stopOnFail', variables, default=True)
     fail_on_warning = 'failOn' in action and action['failOn'] == 'warning'
     for query_text in queries:
+        logging.debug("Executing CONSTRUCT query %s", query_text[0])
         parsed_query = prepareQuery(query_text[1])
         results = g.query(
             parsed_query,
@@ -966,6 +972,7 @@ def __format_validation_results__(results_graph: Graph) -> Tuple[str, int, bool]
         max_length = [max(a, b) for a, b in zip(max_length, [len(s) for s in as_text])]
         rows.append(as_text)
     row_format = " ".join(f"{{:{length}.{length}}}" for length in max_length) + "\n"
+    rows.sort(key=lambda x: x[0])
     result_table.write(row_format.format(*headers))
     for row in rows:
         result_table.write(row_format.format(*row))

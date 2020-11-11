@@ -249,8 +249,8 @@ Actions are executed in the order they are listed. Each action must have an `act
 - `export`, which functions similarly to the command-line export functionality, gathering one or
   more input ontologies and exporting them as a single file, with some optional transformations,
   depending on the following specified options:
-  - `source`, `target` and `includes` - if `includes` is not present, `source` and `target` are both
-    assumed to be file paths to a single file. If `includes` is provided, `source` is 
+  - `source`, `target` and `includes` - if `includes` is not present, `source` is
+    assumed to be the path to a single file. If `includes` is provided, `source` is 
     assumed to be a directory, and each member of the `includes` list a glob pattern inside the
     `source` directory. `target` is always treated as a single file path.
   - `merge` - if provided, it must have two mandatory fields, `iri` and `version`. In this case, all
