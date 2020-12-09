@@ -141,6 +141,8 @@ properties:
             - export
             - sparql
             - verify
+        message:
+          $ref: '#/definitions/non_empty_string'
       allOf:
         - if:
             properties:

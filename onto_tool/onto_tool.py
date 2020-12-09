@@ -668,7 +668,7 @@ def __bundle_transform_sparql__(action, tool, variables):
 
 
 def __bundle_defined_by__(action, variables):
-    logging.info('Add definedBy %s', action)
+    logging.debug('Add definedBy %s', action)
     for in_out in __bundle_file_list(action, variables):
         g = Graph()
         onto_file = in_out['inputFile']
@@ -695,7 +695,7 @@ def __bundle_defined_by__(action, variables):
 
 
 def __bundle_copy__(action, variables):
-    logging.info('Copy %s', action)
+    logging.debug('Copy %s', action)
     for in_out in __bundle_file_list(action, variables):
         if isfile(in_out['inputFile']):
             shutil.copy(in_out['inputFile'], in_out['outputFile'])
@@ -706,7 +706,7 @@ def __bundle_copy__(action, variables):
 
 
 def __bundle_move__(action, variables):
-    logging.info('Move %s', action)
+    logging.debug('Move %s', action)
     for in_out in __bundle_file_list(action, variables):
         if isfile(in_out['inputFile']):
             shutil.move(in_out['inputFile'], in_out['outputFile'])
@@ -717,7 +717,7 @@ def __bundle_move__(action, variables):
 
 
 def __bundle_markdown__(action, variables):
-    logging.info('Markdown %s', action)
+    logging.debug('Markdown %s', action)
     conv = md2html()
     filepath_in = action['source'].format(**variables)
     filepath_out = action['target'].format(**variables)
@@ -729,7 +729,7 @@ def __bundle_markdown__(action, variables):
 
 
 def __bundle_graph__(action, variables):
-    logging.info('Graph %s', action)
+    logging.debug('Graph %s', action)
     documentation = action['target'].format(**variables)
     version = action['version'].format(**variables)
     title = action['title'].format(**variables)
@@ -743,7 +743,7 @@ def __bundle_graph__(action, variables):
 
 
 def __bundle_sparql__(action, variables):
-    logging.info('SPARQL %s', action)
+    logging.debug('SPARQL %s', action)
     output = action['target'].format(**variables)
     query = action['query'].format(**variables)
     if isfile(query):
@@ -792,7 +792,7 @@ def __build_graph_from_inputs__(action, variables):
 
 
 def __bundle_verify__(action, variables):
-    logging.info('Verify %s', action)
+    logging.debug('Verify %s', action)
     if action['type'] == 'select':
         __verify_select__(action, variables)
     elif action['type'] == 'ask':
@@ -1036,7 +1036,7 @@ def __boolean_option__(action, key, variables, default=False):
 
 
 def __bundle_export__(action, variables):
-    logging.info('Export %s', action)
+    logging.debug('Export %s', action)
     if __boolean_option__(action, 'compress', variables):
         output = gzip.open(action['target'].format(**variables), 'wt', encoding="utf-8")
     else:
@@ -1106,6 +1106,8 @@ def bundleOntology(command_line_variables, bundle_path):
     substituted = dict((k, variables[k]) for k in variables)
 
     for action in bundle['actions']:
+        if 'message' in action:
+            logging.info(action['message'].format(**substituted))
         if action['action'] == 'transform':
             __bundle_transform__(action, bundle['tools'], substituted)
         elif action['action'] == 'mkdir':

@@ -1,0 +1,20 @@
+bundle: test
+variables:
+  input: "tests"
+  output: "tests/bundle"
+actions:
+  - action: 'sparql'
+    message: 'Test SPARQL Query from {input}'
+    source: '{input}'
+    includes:
+      - 'merge-top.ttl'
+    target: '{output}/sparql.ttl'
+    query: >
+      prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      construct {{
+        ?s a ?type .
+        ?s rdfs:definedBy <urn:test-sparql-queries>
+      }}
+      WHERE {{
+        ?s a ?type .
+      }}

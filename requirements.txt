@@ -1,4 +1,5 @@
-rdflib>=4.2.2
+rdflib[sparql]>=5.0.0
+pyshacl
 pydot>=1.4.1
 jinja2>=2.11.2
 markdown>=3.2.1
@@ -8,7 +9,7 @@ pyyaml>=5.3.1
 pip>=19.0.3
 MarkupSafe>=1.1.1
 six>=1.14.0
-pyparsing>=2.4.7
+pyparsing==2.4.7
 isodate>=0.6.0
 jsonschema>=3.2.0
 attrs>=19.3.0
