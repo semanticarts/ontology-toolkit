@@ -1,0 +1,17 @@
+bundle: test
+variables:
+  input: "tests/bundle"
+  output: "tests/bundle"
+actions:
+  - action: 'verify'
+    type: 'select'
+    source: '{input}'
+    includes:
+      - 'verify_data.ttl'
+    target: '{output}/verify_select_errors.csv'
+    query: >
+      prefix skos: <http://www.w3.org/2004/02/skos/core#>
+      select ?unlabeled where {{
+        ?unlabeled a ?type .
+        filter not exists {{ ?unlabeled skos:prefLabel ?label }}
+      }}

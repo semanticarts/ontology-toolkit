@@ -1,0 +1,17 @@
+prefix skos: <http://www.w3.org/2004/02/skos/core#>
+prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+prefix sh: <http://www.w3.org/ns/shacl#>
+CONSTRUCT {
+    ?report a sh:ValidationReport ;
+        sh:conforms false ;
+        sh:result [ a sh:ValidationResult ;
+                sh:focusNode ?unlabeled ;
+                sh:resultMessage "Missing entity label" ;
+                sh:resultPath skos:prefLabel ;
+                sh:resultSeverity sh:Violation ] .
+}
+WHERE {
+  ?unlabeled a ?type .
+  filter not exists { ?unlabeled skos:prefLabel ?label }
+  bind(BNODE() as ?report)
+}

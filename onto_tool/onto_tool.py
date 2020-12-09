@@ -1,4 +1,5 @@
 """Toolkit for ontology maintenance and release."""
+import io
 import logging
 import argparse
 import os
@@ -14,10 +15,12 @@ import json
 import yaml
 import csv
 from jsonschema import validate
+from typing import Tuple
 from rdflib import Graph, ConjunctiveGraph, URIRef, Literal
-from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD
+from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD, Namespace
 from rdflib.util import guess_format
 from rdflib.plugins.sparql import prepareQuery
+import pyshacl
 from .ontograph import OntoGraf
 from .mdutils import md2html
 
@@ -85,6 +88,8 @@ def configure_arg_parser():
         '-i', '--in-place', action="store_true",
         help="Overwrite each input file with update, preserving format")
 
+    update_parser.add_argument('--debug', action="store_true",
+                               help="Emit verbose debug output")
     update_parser.add_argument('-o', '--output',
                                type=argparse.FileType('w', encoding='utf-8'),
                                default=sys.stdout,
@@ -128,6 +133,8 @@ def configure_arg_parser():
     format_parser.add_argument('-c', '--context', action=UriValidator,
                                help='Export as N-Quads in CONTEXT.')
 
+    export_parser.add_argument('--debug', action="store_true",
+                               help="Emit verbose debug output")
     export_parser.add_argument('-o', '--output',
                                type=argparse.FileType('w', encoding='utf-8'),
                                default=sys.stdout,
@@ -156,6 +163,8 @@ def configure_arg_parser():
                                help="Ontology file or directory containing OWL files")
 
     bundle_parser = subparsers.add_parser('bundle', help='Bundle ontology for release')
+    bundle_parser.add_argument('--debug', action="store_true",
+                               help="Emit verbose debug output")
     bundle_parser.add_argument('-v', '--variable', action="append",
                                dest='variables',
                                metavar=('VARIABLE', 'VALUE'),
@@ -167,6 +176,8 @@ def configure_arg_parser():
     graphic_parser = subparsers.add_parser('graphic',
                                            help='Create PNG graphic and dot'
                                            ' file from OWL files')
+    graphic_parser.add_argument('--debug', action="store_true",
+                               help="Emit verbose debug output")
     graphic_parser.add_argument('-o', '--output', action="store",
                                 default=os.getcwd(),
                                 help="Output directory for generated graphics")
@@ -178,6 +189,18 @@ def configure_arg_parser():
     graphic_parser.add_argument('ontology', nargs="*", default=[],
                                 help="Ontology file, directory or name pattern")
     return parser
+
+
+def parse_rdf(g: Graph, onto_file, rdf_format=None):
+    from rdflib.plugins.parsers.notation3 import BadSyntax
+    try:
+        g.parse(onto_file, format=rdf_format if rdf_format is not None else guess_format(onto_file))
+    except BadSyntax as se:
+        text = se._str.decode('utf-8')
+        if len(text) > 30:
+            text = text[0:27] + '...'
+        logging.error("Error parsing %s at %d: %s: %s", onto_file, se.lines + 1, se._why, text)
+        exit(1)
 
 
 def findSingleOntology(g, onto_file):
@@ -204,7 +227,7 @@ def set_version(g, ontology, ontology_iri, version):
 
     version_iri = URIRef(f"{ontology_iri}{version}")
     g.add((ontology, OWL.versionIRI, version_iri))
-    logging.debug(f'versionIRI {version_iri} added for {ontology}')
+    logging.info(f'versionIRI {version_iri} added for {ontology}')
 
 
 def set_version_info(g, ontology, version_info):
@@ -226,7 +249,7 @@ def set_version_info(g, ontology, version_info):
     if not version_info:
         version_info = "Version " + version
     g.add((ontology, OWL.versionInfo, Literal(version_info, datatype=XSD.string)))
-    logging.debug(f'versionInfo "{version_info}" added for {ontology}')
+    logging.info(f'versionInfo "{version_info}" added for {ontology}')
 
 
 def add_defined_by(g, ontology_iri, mode='strict', replace=False, versioned=False):
@@ -346,7 +369,7 @@ def cleanMergeArtifacts(g, iri, version):
         logging.debug(f'Removing existing ontology {o}')
         for t in list(g.triples((o, None, None))):
             g.remove(t)
-    logging.debug(f'Creating new ontology {iri}:{version}')
+    logging.info(f'Creating new ontology {iri}:{version}')
     g.add((iri, RDF.type, OWL.Ontology))
     g.add((iri, OWL.versionIRI, URIRef(str(iri) + version)))
     g.add((iri, OWL.versionInfo, Literal("Created by merge tool.", datatype=XSD.string)))
@@ -420,8 +443,8 @@ def generateGraphic(fileRefs, compact, output, version):
     None.
 
     """
-    allFiles = [file for ref in fileRefs for file in expandFileRef(ref)]
-    og = OntoGraf(allFiles, outpath=output, wee=compact, version=version)
+    all_files = [file for ref in fileRefs for file in expandFileRef(ref)]
+    og = OntoGraf(all_files, outpath=output, wee=compact, version=version)
     og.gather_info()
     og.create_graf()
 
@@ -481,7 +504,7 @@ def __perform_export__(output, output_format, paths, context=None,
         parse_graph = g
 
     for onto_file in [file for ref in paths for file in expandFileRef(ref)]:
-        parse_graph.parse(onto_file, format=guess_format(onto_file))
+        parse_rdf(parse_graph, onto_file)
 
     # Remove dep versions
     if strip_versions:
@@ -517,12 +540,12 @@ class VarDict(dict):
         return template.format(**self)
 
 
-def __bundle_file_list(action, variables, single_target=False):
+def __bundle_file_list(action, variables, ignore_target=False):
     """
     Expand a source/target/includes spec into a list of inputFile/outputFile pairs.
 
-    If single_target is specified, renaming is ignored and target is
-    treated as single file path.
+    If ignore_target is specified, renaming is ignored and 'outputFile'
+    will always be None
 
     Otherwise, target is assumed to be a directory, which is created if
     it does not exist.
@@ -534,26 +557,33 @@ def __bundle_file_list(action, variables, single_target=False):
         an includes list of patterns.
     variables : dict
         Current variable values to use in substitution.
-    single_target : bool, optional
+    ignore_target : bool, optional
         If True, only generate input list.
 
     Yields
     ------
     dict
-        Containes 'inputFile' and 'outputFile' unless single_target
+        Containes 'inputFile' and 'outputFile' unless ignore_target
         is specifed.
 
     """
     if 'includes' in action:
         # source and target are directories, apply glob
         src_dir = action['source'].format(**variables)
-        tgt_dir = action['target'].format(**variables)
-        if not single_target and not isdir(tgt_dir):
-            os.mkdir(tgt_dir)
+        if not ignore_target:
+            tgt_dir = action['target'].format(**variables)
+            if not isdir(tgt_dir):
+                os.mkdir(tgt_dir)
+        else:
+            # There are times when
+            tgt_dir = None
         for pattern in action['includes']:
-            for input_file in glob(os.path.join(src_dir, pattern)):
-                if single_target:
-                    output_file = tgt_dir
+            matches = list(glob(os.path.join(src_dir, pattern)))
+            if not matches and not any(wildcard in pattern for wildcard in '[]*?'):
+                logging.warning('%s not found in %s', pattern, src_dir)
+            for input_file in matches:
+                if ignore_target:
+                    output_file = None
                 else:
                     if 'rename' in action:
                         from_pattern = re.compile(
@@ -565,20 +595,26 @@ def __bundle_file_list(action, variables, single_target=False):
                     else:
                         output_file = os.path.basename(input_file)
                 yield dict(inputFile=input_file,
-                           outputFile=os.path.join(tgt_dir, output_file))
+                           outputFile=None if output_file is None else os.path.join(tgt_dir, output_file))
     else:
         yield dict(inputFile=action['source'].format(**variables),
-                   outputFile=action['target'].format(**variables))
+                   outputFile=None if ignore_target else action['target'].format(**variables))
 
 
 def __bundle_transform__(action, tools, variables):
-    logging.debug('Transform %s', action)
+    logging.info('Transform %s', action)
     tool = next((t for t in tools if t['name'] == action['tool']), None)
     if not tool:
         raise Exception('Missing tool ', action['tool'])
-    if tool['type'] != 'Java':
+    if tool['type'] == 'Java':
+        __bundle_transform_java__(action, tool, variables)
+    elif tool['type'] == 'sparql':
+        __bundle_transform_sparql__(action, tool, variables)
+    else:
         raise Exception('Unsupported tool type ', tool['type'])
 
+
+def __bundle_transform_java__(action, tool, variables):
     for in_out in __bundle_file_list(action, variables):
         invocation_vars = VarDict()
         invocation_vars.update(variables)
@@ -586,20 +622,58 @@ def __bundle_transform__(action, tools, variables):
         interpreted_args = ["java", "-jar", tool['jar'].format(**invocation_vars)] + [
             arg.format(**invocation_vars) for arg in tool['arguments']]
         logging.debug('Running %s', interpreted_args)
-        subprocess.run(interpreted_args)
+        status = subprocess.run(interpreted_args, capture_output=True)
+        if status.returncode != 0:
+            logging.error("Tool %s exited with %d: %s", interpreted_args, status.returncode, status.stderr)
+            exit(1)
         if 'replace' in action:
             replacePatternInFile(in_out['outputFile'],
                                  action['replace']['from'].format(**invocation_vars),
                                  action['replace']['to'].format(**invocation_vars))
 
 
-def __bundle_defined_by__(action, variables):
-    logging.debug('Add definedBy %s', action)
+def __bundle_transform_sparql__(action, tool, variables):
+    query = tool['query'].format(**variables)
+    if isfile(query):
+        query_text = open(query, 'r').read()
+    else:
+        query_text = query
+
+    from rdflib.plugins.sparql.parser import parseUpdate
+    from rdflib.plugins.sparql.algebra import translateUpdate
+
+    parsed_query = translateUpdate(parseUpdate(query_text))
+
     for in_out in __bundle_file_list(action, variables):
         g = Graph()
         onto_file = in_out['inputFile']
         rdf_format = guess_format(onto_file)
-        g.parse(onto_file, format=rdf_format)
+        parse_rdf(g, onto_file, rdf_format=rdf_format)
+
+        g.update(
+            parsed_query,
+            initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+
+        if 'format' in tool:
+            rdf_format = 'pretty-xml' if action['format'] == 'xml' else action['format']
+        else:
+            rdf_format = rdf_format
+
+        g.serialize(destination=in_out['outputFile'], format=rdf_format, encoding='utf-8')
+
+        if 'replace' in action:
+            replacePatternInFile(in_out['outputFile'],
+                                 action['replace']['from'].format(**variables),
+                                 action['replace']['to'].format(**variables))
+
+
+def __bundle_defined_by__(action, variables):
+    logging.info('Add definedBy %s', action)
+    for in_out in __bundle_file_list(action, variables):
+        g = Graph()
+        onto_file = in_out['inputFile']
+        rdf_format = guess_format(onto_file)
+        parse_rdf(g, onto_file, rdf_format)
 
         # locate ontology
         ontology = findSingleOntology(g, onto_file)
@@ -621,7 +695,7 @@ def __bundle_defined_by__(action, variables):
 
 
 def __bundle_copy__(action, variables):
-    logging.debug('Copy %s', action)
+    logging.info('Copy %s', action)
     for in_out in __bundle_file_list(action, variables):
         if isfile(in_out['inputFile']):
             shutil.copy(in_out['inputFile'], in_out['outputFile'])
@@ -632,7 +706,7 @@ def __bundle_copy__(action, variables):
 
 
 def __bundle_move__(action, variables):
-    logging.debug('Move %s', action)
+    logging.info('Move %s', action)
     for in_out in __bundle_file_list(action, variables):
         if isfile(in_out['inputFile']):
             shutil.move(in_out['inputFile'], in_out['outputFile'])
@@ -643,7 +717,7 @@ def __bundle_move__(action, variables):
 
 
 def __bundle_markdown__(action, variables):
-    logging.debug('Markdown %s', action)
+    logging.info('Markdown %s', action)
     conv = md2html()
     filepath_in = action['source'].format(**variables)
     filepath_out = action['target'].format(**variables)
@@ -655,7 +729,7 @@ def __bundle_markdown__(action, variables):
 
 
 def __bundle_graph__(action, variables):
-    logging.debug('Graph %s', action)
+    logging.info('Graph %s', action)
     documentation = action['target'].format(**variables)
     version = action['version'].format(**variables)
     title = action['title'].format(**variables)
@@ -669,7 +743,7 @@ def __bundle_graph__(action, variables):
 
 
 def __bundle_sparql__(action, variables):
-    logging.debug('SPARQL %s', action)
+    logging.info('SPARQL %s', action)
     output = action['target'].format(**variables)
     query = action['query'].format(**variables)
     if isfile(query):
@@ -677,11 +751,7 @@ def __bundle_sparql__(action, variables):
     else:
         query_text = query
 
-    g = Graph()
-    for in_out in __bundle_file_list(action, variables, single_target=True):
-        onto_file = in_out['inputFile']
-        rdf_format = guess_format(onto_file)
-        g.parse(onto_file, format=rdf_format)
+    g = __build_graph_from_inputs__(action, variables)
 
     parsed_query = prepareQuery(query_text)
     results = g.query(
@@ -691,9 +761,7 @@ def __bundle_sparql__(action, variables):
     if results.vars is not None:
         # SELECT Query
         with open(output, 'w') as csv_file:
-            writer = csv.writer(csv_file)
-            writer.writerow(results.vars)
-            writer.writerows(results)
+            __serialize_select_results__(csv_file, results)
     elif results.graph is not None:
         # CONSTRUCT Query
         if 'format' in action:
@@ -707,19 +775,268 @@ def __bundle_sparql__(action, variables):
         raise Exception('Unknown query type: ' + query_text)
 
 
-def __boolean_option__(action, key, variables):
+def __serialize_select_results__(output, results):
+    writer = csv.writer(output)
+    writer.writerow(results.vars)
+    writer.writerows(results)
+
+
+def __build_graph_from_inputs__(action, variables):
+    """Read RDF files specified by source/[inputs] into a Graph"""
+    g = Graph()
+    for in_out in __bundle_file_list(action, variables, ignore_target=True):
+        onto_file = in_out['inputFile']
+        parse_rdf(g, onto_file)
+    logging.debug("Input graph size is %d", len(g))
+    return g
+
+
+def __bundle_verify__(action, variables):
+    logging.info('Verify %s', action)
+    if action['type'] == 'select':
+        __verify_select__(action, variables)
+    elif action['type'] == 'ask':
+        __verify_ask__(action, variables)
+    elif action['type'] == 'construct':
+        __verify_construct__(action, variables)
+    elif action['type'] == 'shacl':
+        __verify_shacl__(action, variables)
+
+
+def __verify_select__(action, variables):
+    queries = __build_query_list__(action, variables)
+
+    g = __build_graph_from_inputs__(action, variables)
+
+    fail_count = 0
+    stop_on_fail = __boolean_option__(action, 'stopOnFail', variables, default=True)
+    for query_text in queries:
+        logging.debug("Executing SELECT query %s", query_text[0])
+        parsed_query = prepareQuery(query_text[1])
+        results = g.query(
+            parsed_query,
+            initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+
+        if results.vars is not None:
+            output = [results.vars]
+            output.extend(results)
+            if (len(output)) > 1:
+                fail_count += 1
+                serialized = io.StringIO()
+                __serialize_select_results__(serialized, results)
+                if 'target' in action:
+                    if not stop_on_fail:
+                        # Treat 'target' as directory.
+                        target_dir = action['target'].format(**variables)
+                        if not isdir(target_dir):
+                            os.mkdir(target_dir)
+                        base, _ = splitext(basename(query_text[0]))
+                        with open(join(target_dir, base + '.csv'), 'w') as select_output:
+                            select_output.write(serialized.getvalue())
+                    else:
+                        with open(action['target'].format(**variables), 'w') as select_output:
+                            select_output.write(serialized.getvalue())
+                logging.error("Verification query %s produced non-empty results:\n%s",
+                              query_text[0], serialized.getvalue())
+                if stop_on_fail:
+                    break
+        else:
+            raise Exception('Invalid query for SELECT verify: ' + query_text[1] + ', vars is ' + str(results.vars))
+
+    if fail_count > 0:
+        exit(1)
+
+
+def __verify_construct__(action, variables):
+    queries = __build_query_list__(action, variables)
+
+    g = __build_graph_from_inputs__(action, variables)
+
+    fail_count = 0
+    stop_on_fail = __boolean_option__(action, 'stopOnFail', variables, default=True)
+    fail_on_warning = 'failOn' in action and action['failOn'] == 'warning'
+    for query_text in queries:
+        logging.debug("Executing CONSTRUCT query %s", query_text[0])
+        parsed_query = prepareQuery(query_text[1])
+        results = g.query(
+            parsed_query,
+            initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+
+        if results.graph is not None:
+            if len(results.graph):
+                results.graph.bind("skos", SKOS)
+                results.graph.bind("sh", Namespace('http://www.w3.org/ns/shacl#'))
+                serialized, count, violation = __format_validation_results__(results.graph)
+                if not count:
+                    logging.warning("CONSTRUCT verification %s did not produce well-formed ViolationReport",
+                                    query_text[0])
+                else:
+                    if violation or fail_on_warning:
+                        logging.error("Verification query %s produced non-empty results:\n%s", query_text[0], serialized)
+                    else:
+                        logging.warning("Verification query %s produced non-empty results:\n%s", query_text[0], serialized)
+                if 'target' in action:
+                    if not stop_on_fail:
+                        # Treat 'target' as directory.
+                        target_dir = action['target'].format(**variables)
+                        if not isdir(target_dir):
+                            os.mkdir(target_dir)
+                        base, _ = splitext(basename(query_text[0]))
+                        construct_output = join(target_dir, base + '.ttl')
+                    else:
+                        construct_output = action['target'].format(**variables)
+                    results.graph.serialize(construct_output, format='turtle', encoding='utf-8')
+                if fail_on_warning or violation:
+                    fail_count += 1
+                    if stop_on_fail:
+                        break
+        else:
+            raise Exception('Invalid query for SELECT verify: ' + query_text)
+
+    if fail_count > 0:
+        exit(1)
+
+
+def __verify_shacl__(action, variables):
+    data_graph = __build_graph_from_inputs__(action, variables)
+    shape_graph = __build_graph_from_inputs__(action['shapes'], variables)
+
+    logging.debug("Data graph has %s triples", sum(1 for triple in data_graph))
+    logging.debug("Shape graph has %s triples", sum(1 for triple in shape_graph))
+
+    conforms, results_graph, _ = \
+        pyshacl.validate(
+            data_graph, shacl_graph=shape_graph,
+            inference=None if 'inference' not in action else action['inference'],
+            abort_on_error=False, meta_shacl=False,
+            advanced=True, js=False, debug=False)
+
+    if not conforms:
+        if 'target' in action:
+            results_graph.serialize(
+                destination=action['target'].format(**variables),
+                format='turtle', encoding='utf-8')
+        result_table, count, violation = __format_validation_results__(results_graph)
+        fail_on_warning = 'failOn' in action and action['failOn'] == 'warning'
+        if not count:
+            logging.warning("SHACL verification did not produce a well-formed ViolationReport:\n%s", result_table)
+        else:
+            if violation or fail_on_warning:
+                logging.error("SHACL verification produced non-empty results:\n%s", result_table)
+            else:
+                logging.warning("SHACL verification produced non-empty results:\n%s", result_table)
+        if fail_on_warning or violation:
+            exit(1)
+
+
+def __format_validation_results__(results_graph: Graph) -> Tuple[str, int, bool]:
+    """Format validation results as text table.
+
+    Adjusts the width of the table so that every row fits
+    """
+    result_table = io.StringIO()
+    violations = results_graph.query("""
+            prefix sh: <http://www.w3.org/ns/shacl#>
+            SELECT ?focus ?path ?value ?component ?severity ?message WHERE {
+                ?violation
+                   sh:focusNode ?focus ;
+                   sh:resultMessage ?message ;
+                   sh:resultSeverity ?severity .
+                OPTIONAL { ?violation sh:value ?value }
+                OPTIONAL { ?violation sh:resultPath ?path }
+                OPTIONAL { ?violation sh:sourceConstraintComponent ?component }
+            }
+        """)
+    rows = []
+    headers = ['Focus', 'Path', 'Value', 'Severity', 'Message']
+    max_length = [len(h) for h in headers]
+
+    def format_value(v):
+        return '' if v is None else str(v) if isinstance(v, Literal) else v.n3(results_graph.namespace_manager)
+
+    violation_seen = False
+    for row in violations:
+        message = str(row.message)
+        if len(message) > 50:
+            message = message[0:47] + '...'
+        severity = row.severity.n3(results_graph.namespace_manager)
+        violation_seen |= severity == 'sh:Violation'
+        as_text = [
+            row.focus.n3(results_graph.namespace_manager),
+            format_value(row.path if row.path else row.component),
+            format_value(row.value),
+            severity,
+            message
+        ]
+        # Extend the width of each column to contain the longest value.
+        max_length = [max(a, b) for a, b in zip(max_length, [len(s) for s in as_text])]
+        rows.append(as_text)
+    row_format = " ".join(f"{{:{length}.{length}}}" for length in max_length) + "\n"
+    rows.sort(key=lambda x: x[0])
+    result_table.write(row_format.format(*headers))
+    for row in rows:
+        result_table.write(row_format.format(*row))
+    return result_table.getvalue(), len(rows), violation_seen
+
+
+def __verify_ask__(action, variables):
+    queries = __build_query_list__(action, variables)
+
+    g = __build_graph_from_inputs__(action, variables)
+
+    fail_count = 0
+    stop_on_fail = __boolean_option__(action, 'stopOnFail', variables, default=True)
+    for query_text in queries:
+        parsed_query = prepareQuery(query_text[1])
+        results = g.query(
+            parsed_query,
+            initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+
+        if results.askAnswer is not None:
+            if results.askAnswer != action['expected']:
+                fail_count += 1
+                logging.error(
+                    "Verification ASK query %s did not match expected result %s",
+                    query_text[0], action['expected'])
+                if stop_on_fail:
+                    break
+        else:
+            raise Exception('Invalid query for ASK verify: ' + query_text)
+
+    if fail_count > 0:
+        exit(1)
+
+
+def __build_query_list__(action, variables):
+    if 'query' in action:
+        query = action['query'].format(**variables)
+        if isfile(query):
+            queries = [(query, open(query, 'r').read())]
+        else:
+            queries = [('inline', query)]
+    elif 'queries' in action:
+        query_files = [
+            entry['inputFile'] for entry in
+            __bundle_file_list(action['queries'], variables, ignore_target=True)]
+        queries = [(query, open(query, 'r').read()) for query in query_files]
+    else:
+        raise Exception('No queries specified for verify action: ' + str(action))
+    return queries
+
+
+def __boolean_option__(action, key, variables, default=False):
     if key not in action:
-        return False
+        return default
     value = action[key]
     if value is None:
-        return False
+        return default
     if isinstance(value, bool):
         return value
     return str(value.format(**variables)).lower() in ("yes", "true", "t", "1")
 
 
 def __bundle_export__(action, variables):
-    logging.debug('Export %s', action)
+    logging.info('Export %s', action)
     if __boolean_option__(action, 'compress', variables):
         output = gzip.open(action['target'].format(**variables), 'wt', encoding="utf-8")
     else:
@@ -735,7 +1052,7 @@ def __bundle_export__(action, variables):
         merge = (action['merge']['iri'], action['merge']['version'])
 
     paths = list(f['inputFile']
-                 for f in __bundle_file_list(action, variables, single_target=True))
+                 for f in __bundle_file_list(action, variables, ignore_target=True))
 
     defined_by = None
     if 'definedBy' in action:
@@ -772,7 +1089,7 @@ def bundleOntology(command_line_variables, bundle_path):
     extension = os.path.splitext(bundle_path)[1]
     schema_file = os.path.join(
         os.path.dirname(os.path.realpath(__file__)),
-        'bundle_schema.json')
+        'bundle_schema.yaml')
     with open(bundle_path, 'r') as b_stream, open(schema_file, 'r') as schema:
         if extension == '.yaml':
             bundle = yaml.safe_load(b_stream)
@@ -781,7 +1098,7 @@ def bundleOntology(command_line_variables, bundle_path):
             bundle = json.load(b_stream)
 
         # will throw ValidationError on failure
-        validate(bundle, json.load(schema))
+        validate(bundle, yaml.safe_load(schema))
 
     variables = VarDict()
     variables.update(bundle['variables'])
@@ -809,6 +1126,8 @@ def bundleOntology(command_line_variables, bundle_path):
             __bundle_export__(action, substituted)
         elif action['action'] == 'sparql':
             __bundle_sparql__(action, substituted)
+        elif action['action'] == 'verify':
+            __bundle_verify__(action, substituted)
         else:
             raise Exception('Unknown action ' + str(action))
 
@@ -836,7 +1155,7 @@ def updateOntology(args, output_format):
     for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
         g = Graph()
         orig_format = guess_format(onto_file)
-        g.parse(onto_file, format=orig_format)
+        parse_rdf(g, onto_file, orig_format)
         logging.debug(f'{onto_file} has {len(g)} triples')
 
         # locate ontology
@@ -888,9 +1207,12 @@ def updateOntology(args, output_format):
 
 def main(arguments):
     """Do the thing."""
-    logging.basicConfig(level=logging.DEBUG)
-
     args = configure_arg_parser().parse_args(args=arguments)
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
 
     if args.command == 'bundle':
         bundleOntology(args.variables, args.bundle)
