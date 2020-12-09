@@ -210,7 +210,9 @@ All tools require a `name` by which they are referenced in `transform` actions. 
 
 #### Actions
 
-Actions are executed in the order they are listed. Each action must have an `action` attribute.
+Actions are executed in the order they are listed. Each action must have an `action` attribute,
+and any action can contain a `message` attribute, the contents of which will be
+emitted as a `INFO`-level log message prior to the execution of the action.
 
 ##### Basic File Manipulation
 - `mkdir`, which requires a `directory` attribute to specify the path of the directory to be created 
