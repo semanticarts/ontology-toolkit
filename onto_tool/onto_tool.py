@@ -214,7 +214,7 @@ def findSingleOntology(g, onto_file):
         return None
 
     ontology = ontologies[0]
-    logging.info(f'{ontology} found in {onto_file}')
+    logging.debug(f'{ontology} found in {onto_file}')
     return ontology
 
 
@@ -602,7 +602,7 @@ def __bundle_file_list(action, variables, ignore_target=False):
 
 
 def __bundle_transform__(action, tools, variables):
-    logging.info('Transform %s', action)
+    logging.debug('Transform %s', action)
     tool = next((t for t in tools if t['name'] == action['tool']), None)
     if not tool:
         raise Exception('Missing tool ', action['tool'])
