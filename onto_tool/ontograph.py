@@ -33,36 +33,35 @@ class OntoGraf():
         self.wee = wee
         if not version:
             version = datetime.datetime.now().isoformat()[:10]
-        self.title = f'{title} Ontology: {version}'
-        if wee:
-            self.graf = pydot.Dot(graph_type='digraph',
-                                  label=self.title,
-                                  labelloc='t',
-                                  rankdir="TB")
+        if repo:
+            self.title = self.anonymize_url(repo) + ': ' + version
+            outfilename = 'repo'
         else:
-            self.graf = pydot.Dot(graph_type='digraph',
-                                  label=self.title,
-                                  labelloc='t',
-                                  rankdir="LR",
-                                  ranksep="0.5",
-                                  nodesep="1.25")
-
-        self.graf.set_node_defaults(**{
-            'color': 'lightgray',
-            'style': 'unfilled',
-            'shape': 'record',
-            'fontname': 'Bitstream Vera Sans',
-            'fontsize': '10'
-        })
+            self.title = f'{title} Ontology: {version}'
+            outfilename = f'{title}{version}'
+        self.graf = None
         self.files = files
         self.repo = repo
+
         self.outpath = outpath
-        outfilename = f'{title}{version}'
-        self.outdot = os.path.join(self.outpath, outfilename + ".dot")
-        self.outpng = os.path.join(self.outpath, outfilename + ".png")
+        if os.path.isdir(outpath):
+            self.outdot = os.path.join(self.outpath, outfilename + ".dot")
+            self.outpng = os.path.join(self.outpath, outfilename + ".png")
+        else:
+            self.outdot = self.outpath + ".dot"
+            self.outpng = self.outpath + ".png"
+
         self.outdict = {}
         self.arrowcolor = "darkorange2"
         self.arrowhead = "vee"
+
+    @staticmethod
+    def anonymize_url(url):
+        parsed = urlparse(url)
+        return urlunparse((parsed.scheme,
+                           re.sub('^.*@', '', parsed.netloc),
+                           parsed.path,
+                           '', '', ''))
 
     def select_query(self, query):
         """Execute SPARQL SELECT query, return results as generator."""
@@ -178,6 +177,26 @@ class OntoGraf():
             data_dict = self.outdict
         if wee is None:
             wee = self.wee
+        if wee:
+            self.graf = pydot.Dot(graph_type='digraph',
+                                  label=self.title,
+                                  labelloc='t',
+                                  rankdir="TB")
+        else:
+            self.graf = pydot.Dot(graph_type='digraph',
+                                  label=self.title,
+                                  labelloc='t',
+                                  rankdir="LR",
+                                  ranksep="0.5",
+                                  nodesep="1.25")
+
+        self.graf.set_node_defaults(**{
+            'color': 'lightgray',
+            'style': 'unfilled',
+            'shape': 'record',
+            'fontname': 'Bitstream Vera Sans',
+            'fontsize': '10'
+        })
         for file, file_data in data_dict.items():
             if file != '':
                 ontology_name = file_data["ontologyName"]
@@ -228,6 +247,8 @@ class OntoGraf():
             fill        - Optional  : bar fill character (Str)
             printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
         """
+        if not sys.stdout.isatty():
+            return
         percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
         filled_length = int(length * iteration // total)
         bar = fill * filled_length + '-' * (length - filled_length)
@@ -268,7 +289,8 @@ class OntoGraf():
                 else self.strip_uri(pred_row['predicate'])
 
             self.print_progress_bar(count, len(all_predicates),
-                                    prefix='Processing predicates:', suffix=predicate_str, length=50)
+                                    prefix='Processing predicates:',
+                                    suffix=predicate_str + ' ' * 20, length=50)
             pre_time = perf_counter()
             pred_type = pred_row.get('type')
             if pred_type == str(OWL.ObjectProperty):
@@ -414,12 +436,24 @@ class OntoGraf():
         return min(5, max(1, round(log(num_used, 100))))
 
     def create_instance_graf(self, data_dict=None):
+        self.graf = pydot.Dot(graph_type='digraph',
+                              label=self.title,
+                              labelloc='t',
+                              rankdir="LR",
+                              ranksep="0.5")
+
+        self.graf.set_node_defaults(**{
+            'color': 'lightgray',
+            'style': 'unfilled',
+            'shape': 'record',
+            'fontname': 'Bitstream Vera Sans',
+            'fontsize': '10'
+        })
         if data_dict is None:
             data_dict = self.outdict
         for class_, class_data in data_dict.items():
-            class_info = "{{{}\\l\\l{}|{}}}".format(
-                class_,
-                class_data['label'],
+            class_info = "{}|{}".format(
+                class_data['label'] if class_data['label'] else self.strip_uri(class_),
                 "\\l".join(f"{prop}: {dt}" for prop, dt in class_data['data'].keys()))
             node = pydot.Node(name='"' + class_ + '"',
                               label=class_info)
