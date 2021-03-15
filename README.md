@@ -114,7 +114,7 @@ The `graphic` sub-command will create either
   the import hierarchy, or
 * a diagram of the use of classes and object and data properties in a triple store.
     
-Graphics are exported both as ```png``` files and also as a ```dot``` file.  This ```dot``` file can be used with Graphviz or with web tools such as [Model Viewer](http://www.semantechs.co.uk/model-viewer)
+Graphics are exported both as ```png``` files and also as a ```dot``` file.  This ```dot``` file can be used with Graphviz or with web tools such as [Dot Viewer](http://www.semantechs.co.uk/turtle-editor-viewer/)
 
 ```
 usage: onto_tool graphic [-h] [-e ENDPOINT] [--schema | --data] [--debug]
