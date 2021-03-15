@@ -108,11 +108,19 @@ optional arguments:
 
 ### Graphic
 
-The `graphic` sub-command will create either a comprehensive diagram showing ontology modules together with classes, object properties and "Things" together with the path of imports, or (if the 'wee' option is selected) a simple diagram of ontology modules and the import hierarchy.  Graphics are exported both as ```png``` files and also as a ```dot``` file.  This ```dot``` file can be used with Graphviz or with web tools such as [Model Viewer](http://www.semantechs.co.uk/model-viewer)
+The `graphic` sub-command will create either 
+* a comprehensive diagram showing ontology modules together with classes, object properties and "Things"
+  together with the path of imports, or (if the 'wee' option is selected) a simple diagram of ontology modules and
+  the import hierarchy, or
+* a diagram of the use of classes and object and data properties in a triple store.
+    
+Graphics are exported both as ```png``` files and also as a ```dot``` file.  This ```dot``` file can be used with Graphviz or with web tools such as [Model Viewer](http://www.semantechs.co.uk/model-viewer)
 
 ```
-$ onto_tool graphic -h
-usage: onto_tool graphic [-h] [--debug] [-o OUTPUT] [-v VERSION] [-w]
+usage: onto_tool graphic [-h] [-e ENDPOINT] [--schema | --data] [--debug]
+                         [-o OUTPUT] [--instance-limit INSTANCE_LIMIT]
+                         [--predicate-threshold PREDICATE_THRESHOLD]
+                         [-v VERSION] [-w]
                          [ontology [ontology ...]]
 
 positional arguments:
@@ -120,9 +128,18 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
+  -e ENDPOINT, --endpoint ENDPOINT
+                        URI of SPARQL endpoint to use to gather data
+  --schema              Generate ontology import graph (default)
+  --data                Analyze instances for types and links
   --debug               Emit verbose debug output
   -o OUTPUT, --output OUTPUT
                         Output directory for generated graphics
+  --instance-limit INSTANCE_LIMIT
+                        Size limit on instance queries (default 500000)
+  --predicate-threshold PREDICATE_THRESHOLD
+                        Ignore predicates which occur less than
+                        PREDICATE_THRESHOLD times (default 10)
   -v VERSION, --version VERSION
                         Version to place in graphic
   -w, --wee             a version of the graphic with only core information
