@@ -304,6 +304,7 @@ class OntoGraf():
                 prefix xsd: <http://www.w3.org/2001/XMLSchema#>
                 prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
                 prefix gist: <https://ontologies.semanticarts.com/gist/>
+                prefix skos: <http://www.w3.org/2004/02/skos/core#>
 
                 select ?src ?srcLabel
                        ?tgt ?tgtLabel
@@ -333,6 +334,7 @@ class OntoGraf():
                 prefix xsd: <http://www.w3.org/2001/XMLSchema#>
                 prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
                 prefix gist: <https://ontologies.semanticarts.com/gist/>
+                prefix skos: <http://www.w3.org/2004/02/skos/core#>
 
                 select ?src ?srcLabel
                        ?dt
@@ -361,6 +363,7 @@ class OntoGraf():
                 prefix xsd: <http://www.w3.org/2001/XMLSchema#>
                 prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
                 prefix gist: <https://ontologies.semanticarts.com/gist/>
+                prefix skos: <http://www.w3.org/2004/02/skos/core#>
 
                 select ?src ?srcLabel
                        ?tgt ?tgtLabel
