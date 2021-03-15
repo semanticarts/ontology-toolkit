@@ -29,29 +29,34 @@ from rdflib.util import guess_format
 # pylint: disable=W1401
 
 class OntoGraf():
-    def __init__(self, files, outpath='.', wee=False, title='Gist', version=None, repo=None):
-        self.wee = wee
+    def __init__(self, files, repo=None, **kwargs):
+        self.wee = kwargs.get('wee', False)
+        title = kwargs.get('title', 'Gist')
+        version = kwargs.get('version')
         if not version:
             version = datetime.datetime.now().isoformat()[:10]
         if repo:
             self.title = self.anonymize_url(repo) + ': ' + version
-            outfilename = 'repo'
+            out_filename = 'repo'
         else:
             self.title = f'{title} Ontology: {version}'
-            outfilename = f'{title}{version}'
+            out_filename = f'{title}{version}'
         self.graf = None
         self.files = files
         self.repo = repo
 
+        outpath = kwargs.get('outpath', '.')
         self.outpath = outpath
         if os.path.isdir(outpath):
-            self.outdot = os.path.join(self.outpath, outfilename + ".dot")
-            self.outpng = os.path.join(self.outpath, outfilename + ".png")
+            self.outdot = os.path.join(self.outpath, out_filename + ".dot")
+            self.outpng = os.path.join(self.outpath, out_filename + ".png")
         else:
             self.outdot = self.outpath + ".dot"
             self.outpng = self.outpath + ".png"
 
-        self.outdict = {}
+        self.limit = kwargs.get('limit', 500000)
+        self.threshold = kwargs.get('threshold', 10)
+        self.node_data = {}
         self.arrowcolor = "darkorange2"
         self.arrowhead = "vee"
 
@@ -94,7 +99,7 @@ class OntoGraf():
         return re.sub(r'^.*[/#](gist)?(.*?)(X.x.x|\d+.\d+.\d+)?$', '\\2', str(uri))
 
     def gather_schema_info_from_files(self):
-        self.outdict = {}
+        self.node_data = {}
         for file_path in self.files:
             filename = os.path.basename(file_path)
             logging.debug('Parsing %s for documentation', filename)
@@ -112,7 +117,7 @@ class OntoGraf():
             gist_things = [self.strip_uri(c) for c in graph.subjects(RDF.type, OWL.Thing)]
             imports = [self.strip_uri(c) for c in graph.objects(ontology, OWL.imports)]
 
-            self.outdict[filename] = {
+            self.node_data[filename] = {
                 "ontologyName": ontology_name,
                 "classesList": "\\l".join(classes),
                 "obj_propertiesList": "\\l".join(obj_props),
@@ -120,7 +125,7 @@ class OntoGraf():
                 "gist_thingsList": "\\l".join(gist_things),
                 "imports": imports
             }
-        return self.outdict
+        return self.node_data
 
     def gather_schema_info_from_repo(self):
         onto_data = defaultdict(lambda: defaultdict(list))
@@ -161,20 +166,19 @@ class OntoGraf():
         for entity in self.select_query(onto_query):
             onto_data[entity['ontology']][mapping[entity['type']]].append(self.strip_uri(entity['entity']))
 
-        self.outdict = defaultdict(dict)
+        self.node_data = defaultdict(dict)
         for ontology, props in onto_data.items():
-            self.outdict[ontology]['ontologyName'] = self.strip_uri(ontology)
+            self.node_data[ontology]['ontologyName'] = self.strip_uri(ontology)
             for key in set(mapping.values()):
                 if key != 'imports':
-                    self.outdict[ontology][key] = "\\l".join(sorted(props[key])) if key in props else ''
+                    self.node_data[ontology][key] = "\\l".join(sorted(props[key])) if key in props else ''
                 else:
-                    self.outdict[ontology][key] = props[key] if key in props else []
-        print(self.outdict)
-        return self.outdict
+                    self.node_data[ontology][key] = props[key] if key in props else []
+        return self.node_data
 
     def create_schema_graf(self, data_dict=None, wee=None):
         if data_dict is None:
-            data_dict = self.outdict
+            data_dict = self.node_data
         if wee is None:
             wee = self.wee
         if wee:
@@ -247,8 +251,8 @@ class OntoGraf():
             fill        - Optional  : bar fill character (Str)
             printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
         """
-        if not sys.stdout.isatty():
-            return
+        # if not sys.stdout.isatty():
+        #     return
         percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
         filled_length = int(length * iteration // total)
         bar = fill * filled_length + '-' * (length - filled_length)
@@ -282,7 +286,7 @@ class OntoGraf():
           }
         }
         """
-        self.outdict = {}
+        self.node_data = {}
         all_predicates = list(self.select_query(predicate_query))
         for count, pred_row in enumerate(all_predicates):
             predicate_str = pred_row['label'] if pred_row.get('label') \
@@ -401,24 +405,24 @@ class OntoGraf():
                 }
                 """
             query_text = Template(type_query).substitute(pred=pred_row['predicate'],
-                                                         limit=500000)
+                                                         limit=self.limit)
             for type_row in self.select_query(query_text):
-                if 'src' not in type_row:
+                if 'src' not in type_row or int(type_row.get('num', 0)) < self.threshold:
                     continue
-                if type_row['src'] not in self.outdict:
+                if type_row['src'] not in self.node_data:
                     src = {
                         'label': type_row.get('srcLabel'),
                         'links': {},
                         'data': {}
                     }
-                    self.outdict[type_row['src']] = src
+                    self.node_data[type_row['src']] = src
                 else:
-                    src = self.outdict[type_row['src']]
+                    src = self.node_data[type_row['src']]
                 if type_row.get('dt'):
                     src['data'][(predicate_str, self.strip_uri(type_row['dt']))] = int(type_row['num'])
                 else:
-                    if type_row['tgt'] not in self.outdict:
-                        self.outdict[type_row['tgt']] = {
+                    if type_row['tgt'] not in self.node_data:
+                        self.node_data[type_row['tgt']] = {
                             'label': type_row.get('tgtLabel'),
                             'links': {},
                             'data': {}
@@ -427,7 +431,6 @@ class OntoGraf():
 
             logging.debug("Fetching %s took %d seconds", str(pred_row), perf_counter() - pre_time)
 
-        # print(self.outdict)
         self.print_progress_bar(len(all_predicates), len(all_predicates),
                                 prefix='Processing predicates:', suffix='Complete', length=50)
 
@@ -450,7 +453,7 @@ class OntoGraf():
             'fontsize': '10'
         })
         if data_dict is None:
-            data_dict = self.outdict
+            data_dict = self.node_data
         for class_, class_data in data_dict.items():
             class_info = "{}|{}".format(
                 class_data['label'] if class_data['label'] else self.strip_uri(class_),
