@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="onto_tool",
-    version="1.0.1",
+    version="1.1.0",
     author="Boris Pelakh",
     author_email="boris.pelakh@semanticarts.com",
     description="Ontology Maintenance and Release Tool",
@@ -21,7 +21,8 @@ setuptools.setup(
         'markdown',
         'mdx_smartypants',
         'pyyaml',
-        'jsonschema>=3.2.0'
+        'jsonschema>=3.2.0',
+        'SPARQLWrapper>=1.8.5'
     ],
     tests_require=[
         'pytest'

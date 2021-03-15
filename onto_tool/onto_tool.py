@@ -175,12 +175,26 @@ def configure_arg_parser():
 
     graphic_parser = subparsers.add_parser('graphic',
                                            help='Create PNG graphic and dot'
-                                           ' file from OWL files')
+                                           ' file from OWL files or SPARQL Endpoint')
+    graphic_parser.add_argument("-e", "--endpoint", action="store",
+                                help="URI of SPARQL endpoint to use to gather data")
+    which_graphic = graphic_parser.add_mutually_exclusive_group()
+    which_graphic.add_argument("--schema", dest="action", action="store_const",
+                               const="ontology", default="ontology",
+                               help="Generate ontology import graph (default)")
+    which_graphic.add_argument("--data", dest="action", action="store_const",
+                               const="instances",
+                               help="Analyze instances for types and links")
     graphic_parser.add_argument('--debug', action="store_true",
-                               help="Emit verbose debug output")
+                                help="Emit verbose debug output")
     graphic_parser.add_argument('-o', '--output', action="store",
                                 default=os.getcwd(),
                                 help="Output directory for generated graphics")
+    graphic_parser.add_argument("--instance-limit", type=int, default=500000,
+                                help="Size limit on instance queries (default 500000)")
+    graphic_parser.add_argument("--predicate-threshold", type=int, default=10,
+                                help="Ignore predicates which occur less than PREDICATE_THRESHOLD times"
+                                     " (default 10)")
     graphic_parser.add_argument('-v', '--version', help="Version to place in graphic",
                                 action="store")
     graphic_parser.add_argument('-w', '--wee', action="store_true",
@@ -423,17 +437,25 @@ def copyIfPresent(fromLoc, toLoc):
         shutil.copy(fromLoc, toLoc)
 
 
-def generateGraphic(fileRefs, compact, output, version):
+def generateGraphic(action, onto_files, endpoint, **kwargs):
     """
     Generate ontology .dot and .png graphic.
 
     Parameters
     ----------
-    fileRefs : list(string)
+    action : string
+        'ontology' or 'data', depending on the type of graphic requested.
+    onto_files : list(string)
         List of paths or glob patterns from which to gather ontologies.
-    compact : boolean
+    endpoint : string
+        URL of SPARQL endpoint to use for data instead of local ontology files.
+
+
+    Keyword Parameters
+    ------------------
+    wee : boolean
         If True, generate a compact ontology graph.
-    output : string
+    outpath : string
         Path of directory where graph will be output.
     version : string
         Version to be used in graphic title.
@@ -443,10 +465,22 @@ def generateGraphic(fileRefs, compact, output, version):
     None.
 
     """
-    all_files = [file for ref in fileRefs for file in expandFileRef(ref)]
-    og = OntoGraf(all_files, outpath=output, wee=compact, version=version)
-    og.gather_info()
-    og.create_graf()
+    all_files = [file for ref in onto_files for file in expandFileRef(ref)]
+    og = OntoGraf(all_files, repo=endpoint, **kwargs)
+    if endpoint and all_files:
+        logging.warning('Endpoint specified, ignoring files')
+    if action == 'ontology':
+        if endpoint:
+            og.gather_schema_info_from_repo()
+        else:
+            og.gather_schema_info_from_files()
+        og.create_schema_graf()
+    else:
+        if endpoint:
+            og.gather_instance_info_from_repo()
+        else:
+            raise Exception('Not yet supported!')
+        og.create_instance_graf()
 
 
 def __perform_export__(output, output_format, paths, context=None,
@@ -739,7 +773,7 @@ def __bundle_graph__(action, variables):
     og = OntoGraf([f['inputFile'] for f in __bundle_file_list(action, variables)],
                   outpath=documentation, wee=compact, title=title, version=version)
     og.gather_info()
-    og.create_graf()
+    og.create_schema_graf()
 
 
 def __bundle_sparql__(action, variables):
@@ -1221,7 +1255,9 @@ def main(arguments):
         return
 
     if args.command == 'graphic':
-        generateGraphic(args.ontology, args.wee, args.output, args.version)
+        generateGraphic(args.action, args.ontology, args.endpoint,
+                        limit=args.instance_limit, threshold=args.predicate_threshold,
+                        wee=args.wee, outpath=args.output, version=args.version)
         return
 
     of = 'pretty-xml' if args.format == 'xml' else args.format
