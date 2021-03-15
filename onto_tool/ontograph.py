@@ -166,6 +166,10 @@ class OntoGraf():
         for entity in self.select_query(onto_query):
             onto_data[entity['ontology']][mapping[entity['type']]].append(self.strip_uri(entity['entity']))
 
+        if not onto_data:
+            logging.warning('Could not find any ontology entities in %s', self.repo)
+            return
+
         self.node_data = defaultdict(dict)
         for ontology, props in onto_data.items():
             self.node_data[ontology]['ontologyName'] = self.strip_uri(ontology)
@@ -288,6 +292,10 @@ class OntoGraf():
         """
         self.node_data = {}
         all_predicates = list(self.select_query(predicate_query))
+        if not all_predicates:
+            logging.warning('No interesting predicates found in %s', self.repo)
+            return
+
         for count, pred_row in enumerate(all_predicates):
             predicate_str = pred_row['label'] if pred_row.get('label') \
                 else self.strip_uri(pred_row['predicate'])
