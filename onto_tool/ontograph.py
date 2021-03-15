@@ -7,21 +7,29 @@ and then presents the results as a graphviz 'dot' file and a .png file.
 @version 2
 """
 
+import datetime
 import logging
 import os
 import re
-import datetime
+import sys
+from collections import defaultdict
+from math import log
+from string import Template
+from time import perf_counter
+from urllib.parse import urlparse, urlunparse
 
+import pydot
+from SPARQLWrapper import SPARQLWrapper, POST, BASIC, JSON
 from rdflib import Graph, BNode
 from rdflib.namespace import RDF, OWL
 from rdflib.util import guess_format
-import pydot
+
 
 # Ignore \l - uses them as a line separator
 # pylint: disable=W1401
 
 class OntoGraf():
-    def __init__(self, files, outpath='.', wee=False, title='Gist', version=None):
+    def __init__(self, files, outpath='.', wee=False, title='Gist', version=None, repo=None):
         self.wee = wee
         if not version:
             version = datetime.datetime.now().isoformat()[:10]
@@ -47,6 +55,7 @@ class OntoGraf():
             'fontsize': '10'
         })
         self.files = files
+        self.repo = repo
         self.outpath = outpath
         outfilename = f'{title}{version}'
         self.outdot = os.path.join(self.outpath, outfilename + ".dot")
@@ -55,11 +64,37 @@ class OntoGraf():
         self.arrowcolor = "darkorange2"
         self.arrowhead = "vee"
 
+    def select_query(self, query):
+        """Execute SPARQL SELECT query, return results as generator."""
+        logging.debug(f"Query against {self.repo}")
+        logging.debug(f"Query\n {query}")
+
+        repo_url = urlparse(self.repo)
+
+        sparql = SPARQLWrapper(urlunparse((repo_url.scheme,
+                                           re.sub('^.*@', '', repo_url.netloc),
+                                           repo_url.path,
+                                           '', '', '')))
+
+        sparql.setHTTPAuth(BASIC)
+        sparql.setCredentials(repo_url.username, repo_url.password)
+        sparql.setMethod(POST)
+
+        sparql.setQuery(query)
+        sparql.setReturnFormat(JSON)
+        results = sparql.query().convert()
+
+        for result in results["results"]["bindings"]:
+            yield dict(
+                (v, result[v]["value"])
+                for v in results["head"]["vars"] if v in result
+            )
+
     @staticmethod
     def strip_uri(uri):
         return re.sub(r'^.*[/#](gist)?(.*?)(X.x.x|\d+.\d+.\d+)?$', '\\2', str(uri))
 
-    def gather_info(self):
+    def gather_schema_info_from_files(self):
         self.outdict = {}
         for file_path in self.files:
             filename = os.path.basename(file_path)
@@ -88,19 +123,69 @@ class OntoGraf():
             }
         return self.outdict
 
-    def create_graf(self, data_dict=None, wee=None):
+    def gather_schema_info_from_repo(self):
+        onto_data = defaultdict(lambda: defaultdict(list))
+        onto_query = """
+        prefix owl: <http://www.w3.org/2002/07/owl#>
+        prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+        prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        prefix gist: <https://ontologies.semanticarts.com/gist/>
+        
+        select ?ontology ?entity ?type where {
+          ?ontology a owl:Ontology .
+          {
+            ?ontology owl:imports ?entity .
+            BIND(owl:imports as ?type)
+          }
+          UNION
+          {
+            ?entity rdfs:isDefinedBy ?ontology; a/rdfs:subClassOf* gist:Category .
+            BIND(owl:Thing as ?type)
+          }
+          UNION
+          {
+            values ?type { owl:Class owl:DatatypeProperty owl:ObjectProperty owl:Thing }
+            ?entity rdfs:isDefinedBy ?ontology; a ?type .
+            filter(!ISBLANK(?entity))
+          }
+        }
+        """
+        mapping = {
+            str(OWL.Class): 'classesList',
+            str(OWL.ObjectProperty): 'obj_propertiesList',
+            str(OWL.DatatypeProperty): 'data_propertiesList',
+            str(OWL.Thing): 'gist_thingsList',
+            'https://ontologies.semanticarts.com/gist/Category': 'gist_thingsList',
+            str(OWL.imports): 'imports'
+        }
+        for entity in self.select_query(onto_query):
+            onto_data[entity['ontology']][mapping[entity['type']]].append(self.strip_uri(entity['entity']))
+
+        self.outdict = defaultdict(dict)
+        for ontology, props in onto_data.items():
+            self.outdict[ontology]['ontologyName'] = self.strip_uri(ontology)
+            for key in set(mapping.values()):
+                if key != 'imports':
+                    self.outdict[ontology][key] = "\\l".join(sorted(props[key])) if key in props else ''
+                else:
+                    self.outdict[ontology][key] = props[key] if key in props else []
+        print(self.outdict)
+        return self.outdict
+
+    def create_schema_graf(self, data_dict=None, wee=None):
         if data_dict is None:
             data_dict = self.outdict
         if wee is None:
             wee = self.wee
-        for file in data_dict.keys():
+        for file, file_data in data_dict.items():
             if file != '':
-                ontology_name = data_dict[file]["ontologyName"]
-                classes = data_dict[file]["classesList"]
-                obj_properties = data_dict[file]["obj_propertiesList"]
-                data_properties = data_dict[file]["data_propertiesList"]
-                gist_things = data_dict[file]["gist_thingsList"]
-                imports = data_dict[file]["imports"]
+                ontology_name = file_data["ontologyName"]
+                classes = file_data["classesList"]
+                obj_properties = file_data["obj_propertiesList"]
+                data_properties = file_data["data_propertiesList"]
+                gist_things = file_data["gist_thingsList"]
+                imports = file_data["imports"]
                 if wee:
                     node = pydot.Node(ontology_name)
                 else:
@@ -121,6 +206,235 @@ class OntoGraf():
                                       color=self.arrowcolor,
                                       arrowhead=self.arrowhead)
                     self.graf.add_edge(edge)
+        self.graf.write(self.outdot)
+        self.graf.write_png(self.outpng)
+        logging.debug("Plots saved")
+
+    # Print iterations progress
+    @staticmethod
+    def print_progress_bar(iteration, total,
+                           prefix='', suffix='', decimals=1, length=100,
+                           fill='X', printEnd="\r"):
+        """
+        Stolen from https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console
+        Call in a loop to create terminal progress bar
+        @params:
+            iteration   - Required  : current iteration (Int)
+            total       - Required  : total iterations (Int)
+            prefix      - Optional  : prefix string (Str)
+            suffix      - Optional  : suffix string (Str)
+            decimals    - Optional  : positive number of decimals in percent complete (Int)
+            length      - Optional  : character length of bar (Int)
+            fill        - Optional  : bar fill character (Str)
+            printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+        """
+        percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+        filled_length = int(length * iteration // total)
+        bar = fill * filled_length + '-' * (length - filled_length)
+        print(f'\r{prefix} |{bar}| {percent}% {suffix}', end=printEnd)
+        # Print New Line on Complete
+        if iteration == total:
+            print()
+        sys.stdout.flush()
+
+    def gather_instance_info_from_repo(self):
+        predicate_query = """
+        prefix owl: <http://www.w3.org/2002/07/owl#>
+        prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+        prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        prefix gist: <https://ontologies.semanticarts.com/gist/>
+        prefix skos: <http://www.w3.org/2004/02/skos/core#>
+
+        select distinct ?predicate ?label ?type where {
+          ?s ?predicate ?o
+          FILTER(?predicate NOT IN (rdf:type, skos:prefLabel, skos:definition))
+          FILTER (!STRSTARTS(STR(?predicate), 'http://www.w3.org/2002/07/owl#'))
+          FILTER (!STRSTARTS(STR(?predicate), 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'))
+          FILTER (!STRSTARTS(STR(?predicate), 'http://www.w3.org/2000/01/rdf-schema#'))
+          OPTIONAL {
+            ?predicate skos:prefLabel|rdfs:label ?label
+          }
+          OPTIONAL {
+            values ?type { owl:DatatypeProperty owl:ObjectProperty }
+            ?predicate a ?type
+          }
+        }
+        """
+        self.outdict = {}
+        all_predicates = list(self.select_query(predicate_query))
+        for count, pred_row in enumerate(all_predicates):
+            predicate_str = pred_row['label'] if pred_row.get('label') \
+                else self.strip_uri(pred_row['predicate'])
+
+            self.print_progress_bar(count, len(all_predicates),
+                                    prefix='Processing predicates:', suffix=predicate_str, length=50)
+            pre_time = perf_counter()
+            pred_type = pred_row.get('type')
+            if pred_type == str(OWL.ObjectProperty):
+                type_query = """
+                prefix owl: <http://www.w3.org/2002/07/owl#>
+                prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+                prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                prefix gist: <https://ontologies.semanticarts.com/gist/>
+
+                select ?src ?srcLabel
+                       ?tgt ?tgtLabel
+                       ?num
+                where {
+                  {
+                    select ?src ?tgt (COUNT(?src) as ?num) where {
+                      {
+                        select ?src ?tgt where {
+                          ?s <$pred> ?o .
+                          FILTER(!ISBLANK(?s))
+                          ?s a ?src .
+                          FILTER (!STRSTARTS(STR(?src), 'http://www.w3.org/2002/07/owl#'))
+                          ?o a ?tgt .
+                        } LIMIT $limit
+                      }
+                    } group by ?src ?tgt
+                  }
+                  OPTIONAL { ?src skos:prefLabel|rdfs:label ?srcLabel }
+                  OPTIONAL { ?tgt skos:prefLabel|rdfs:label ?tgtLabel }
+                }
+                """
+            elif pred_type == str(OWL.DatatypeProperty):
+                type_query = """
+                prefix owl: <http://www.w3.org/2002/07/owl#>
+                prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+                prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                prefix gist: <https://ontologies.semanticarts.com/gist/>
+
+                select ?src ?srcLabel
+                       ?dt
+                       ?num
+                where {
+                  {
+                    select ?src ?dt (COUNT(?src) as ?num) where {
+                      {
+                        select ?src ?dt where {
+                          ?s <$pred> ?o .
+                          FILTER(!ISBLANK(?s))
+                          ?s a ?src .
+                          FILTER (!STRSTARTS(STR(?src), 'http://www.w3.org/2002/07/owl#'))
+                          BIND(DATATYPE(?o) as ?dt) .
+                        } LIMIT $limit
+                      }
+                    } group by ?src ?dt
+                  }
+                  OPTIONAL { ?src skos:prefLabel|rdfs:label ?srcLabel }
+                }
+                """
+            else:
+                type_query = """
+                prefix owl: <http://www.w3.org/2002/07/owl#>
+                prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+                prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                prefix gist: <https://ontologies.semanticarts.com/gist/>
+
+                select ?src ?srcLabel
+                       ?tgt ?tgtLabel
+                       ?dt
+                       ?num
+                where {
+                  {
+                    {
+                      select ?src ?tgt (COUNT(?src) as ?num) where {
+                        {
+                          select ?src ?tgt where {
+                            ?s <$pred> ?o .
+                            FILTER(!ISBLANK(?s))
+                            ?s a ?src .
+                            FILTER (!STRSTARTS(STR(?src), 'http://www.w3.org/2002/07/owl#'))
+                            ?o a ?tgt .
+                          } LIMIT $limit
+                        }
+                      } group by ?src ?tgt
+                    }
+                    OPTIONAL { ?src skos:prefLabel|rdfs:label ?srcLabel }
+                    OPTIONAL { ?tgt skos:prefLabel|rdfs:label ?tgtLabel }
+                  }
+                  UNION
+                  {
+                    {
+                      select ?src ?dt (COUNT(?src) as ?num) where {
+                        {
+                          select ?src ?dt where {
+                            ?s <$pred> ?o .
+                            FILTER(!ISBLANK(?s))
+                            FILTER(isLITERAL(?o))
+                            ?s a ?src .
+                            FILTER (!STRSTARTS(STR(?src), 'http://www.w3.org/2002/07/owl#'))
+                            BIND(DATATYPE(?o) as ?dt) .
+                          } LIMIT $limit
+                        }
+                      } group by ?src ?dt
+                    }
+                    OPTIONAL { ?src skos:prefLabel|rdfs:label ?srcLabel }
+                  }
+                }
+                """
+            query_text = Template(type_query).substitute(pred=pred_row['predicate'],
+                                                         limit=500000)
+            for type_row in self.select_query(query_text):
+                if 'src' not in type_row:
+                    continue
+                if type_row['src'] not in self.outdict:
+                    src = {
+                        'label': type_row.get('srcLabel'),
+                        'links': {},
+                        'data': {}
+                    }
+                    self.outdict[type_row['src']] = src
+                else:
+                    src = self.outdict[type_row['src']]
+                if type_row.get('dt'):
+                    src['data'][(predicate_str, self.strip_uri(type_row['dt']))] = int(type_row['num'])
+                else:
+                    if type_row['tgt'] not in self.outdict:
+                        self.outdict[type_row['tgt']] = {
+                            'label': type_row.get('tgtLabel'),
+                            'links': {},
+                            'data': {}
+                        }
+                    src['links'][(predicate_str, type_row['tgt'])] = int(type_row['num'])
+
+            logging.debug("Fetching %s took %d seconds", str(pred_row), perf_counter() - pre_time)
+
+        # print(self.outdict)
+        self.print_progress_bar(len(all_predicates), len(all_predicates),
+                                prefix='Processing predicates:', suffix='Complete', length=50)
+
+    @staticmethod
+    def line_width(num_used):
+        return min(5, max(1, round(log(num_used, 100))))
+
+    def create_instance_graf(self, data_dict=None):
+        if data_dict is None:
+            data_dict = self.outdict
+        for class_, class_data in data_dict.items():
+            class_info = "{{{}\\l\\l{}|{}}}".format(
+                class_,
+                class_data['label'],
+                "\\l".join(f"{prop}: {dt}" for prop, dt in class_data['data'].keys()))
+            node = pydot.Node(name='"' + class_ + '"',
+                              label=class_info)
+
+            self.graf.add_node(node)
+
+            for link, num in class_data['links'].items():
+                pred, target = link
+                edge = pydot.Edge(class_, target,
+                                  label=pred,
+                                  penwidth=self.line_width(num),
+                                  color=self.arrowcolor,
+                                  arrowhead=self.arrowhead)
+                self.graf.add_edge(edge)
+
         self.graf.write(self.outdot)
         self.graf.write_png(self.outpng)
         logging.debug("Plots saved")

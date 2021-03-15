@@ -1,5 +1,5 @@
 rdflib[sparql]>=5.0.0
-pyshacl
+pyshacl~=0.14.0
 pydot>=1.4.1
 jinja2>=2.11.2
 markdown>=3.2.1
@@ -17,3 +17,5 @@ pyrsistent>=0.16.0
 setuptools>=40.8.0
 namedentities>=1.5.2
 zipp>=3.1.0
+pytest~=6.1.2
+SPARQLWrapper~=1.8.5
