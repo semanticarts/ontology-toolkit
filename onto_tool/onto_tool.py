@@ -199,12 +199,16 @@ def configure_arg_parser():
     graphic_parser.add_argument('-o', '--output', action="store",
                                 default=os.getcwd(),
                                 help="Output directory for generated graphics")
-    graphic_parser.add_argument("--instance-limit", type=int, default=500000,
-                                help="Size limit on instance queries (default 500000)")
-    graphic_parser.add_argument("--predicate-threshold", type=int, default=10,
-                                help="Ignore predicates which occur less than PREDICATE_THRESHOLD times"
+    sampling_limits = graphic_parser.add_argument_group(title='Sampling Limits')
+    sampling_limits.add_argument("--instance-limit", type=int, default=500000,
+                                help="Specify a limit on how many triples to consider that use any one"
+                                     " predicate to find (default 500000). This option may result in an"
+                                     " incomplete version of the diagram, missing certain links.")
+    sampling_limits.add_argument("--predicate-threshold", type=int, default=10,
+                                help="Ignore predicates which occur fewer than PREDICATE_THRESHOLD times"
                                      " (default 10)")
-    scope_control = graphic_parser.add_mutually_exclusive_group()
+    graph_filters = graphic_parser.add_argument_group(title="Filters (only one can be used)")
+    scope_control = graph_filters.add_mutually_exclusive_group()
     scope_control.add_argument("--include", nargs="*", default=[],
                                action=UriValidator,
                                help="If specified for --schema, only ontologies matching the specified"
