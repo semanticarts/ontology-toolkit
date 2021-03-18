@@ -217,7 +217,6 @@ def configure_arg_parser():
                                     " excludes any triples in the default graph).")
     scope_control.add_argument("--include-pattern", nargs="*", default=[],
                                metavar="INCLUDE_REGEX",
-                               action="store",
                                help="If specified for --schema, only ontologies matching the specified"
                                     " URI pattern will be shown in full detail. If specified with --data,"
                                     " only triples in the named graphs matching the pattern"
@@ -231,7 +230,6 @@ def configure_arg_parser():
                                     " triples in the named graphs mentioned will be excluded (this also"
                                     " excludes any triples in the default graph).")
     scope_control.add_argument("--exclude-pattern", nargs="*", default=[],
-                               action="store",
                                metavar="EXCLUDE_REGEX",
                                help="If specified for --schema, ontologies matching the specified"
                                     " URI pattern will be omitted from the graph. If specified with --data,"

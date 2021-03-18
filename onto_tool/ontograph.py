@@ -217,6 +217,7 @@ class OntoGraf():
             if file != '':
                 ontology = file_data["ontology"]
                 if not self.ontology_matches_filter(ontology):
+                    logging.debug("Filtered out %s", ontology)
                     continue
                 ontology_name = file_data["ontologyName"]
                 classes = file_data["classesList"]
