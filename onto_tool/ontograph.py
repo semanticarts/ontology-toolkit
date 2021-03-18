@@ -60,6 +60,11 @@ class OntoGraf():
         self.arrowcolor = "darkorange2"
         self.arrowhead = "vee"
 
+        self.include = kwargs.get('include')
+        self.exclude = kwargs.get('exclude')
+        self.include_pattern = kwargs.get('include_pattern')
+        self.exclude_pattern = kwargs.get('exclude_pattern')
+
     @staticmethod
     def anonymize_url(url):
         parsed = urlparse(url)
@@ -96,7 +101,8 @@ class OntoGraf():
 
     @staticmethod
     def strip_uri(uri):
-        return re.sub(r'^.*[/#](gist)?(.*?)(X.x.x|\d+.\d+.\d+)?$', '\\2', str(uri))
+        return re.sub(r'^.*[/#](gist)?(.*?)(X.x.x|\d+.\d+.\d+)?$', '\\2',
+                      re.sub(r'[#/]$', '', str(uri)))
 
     def gather_schema_info_from_files(self):
         self.node_data = {}
@@ -118,6 +124,7 @@ class OntoGraf():
             imports = [self.strip_uri(c) for c in graph.objects(ontology, OWL.imports)]
 
             self.node_data[filename] = {
+                "ontology": ontology,
                 "ontologyName": ontology_name,
                 "classesList": "\\l".join(classes),
                 "obj_propertiesList": "\\l".join(obj_props),
@@ -172,6 +179,7 @@ class OntoGraf():
 
         self.node_data = defaultdict(dict)
         for ontology, props in onto_data.items():
+            self.node_data[ontology]['ontology'] = ontology
             self.node_data[ontology]['ontologyName'] = self.strip_uri(ontology)
             for key in set(mapping.values()):
                 if key != 'imports':
@@ -207,6 +215,9 @@ class OntoGraf():
         })
         for file, file_data in data_dict.items():
             if file != '':
+                ontology = file_data["ontology"]
+                if not self.ontology_matches_filter(ontology):
+                    continue
                 ontology_name = file_data["ontologyName"]
                 classes = file_data["classesList"]
                 obj_properties = file_data["obj_propertiesList"]
@@ -322,7 +333,7 @@ class OntoGraf():
                     select ?src ?tgt (COUNT(?src) as ?num) where {
                       {
                         select ?src ?tgt where {
-                          ?s <$pred> ?o .
+                          $pattern
                           FILTER(!ISBLANK(?s))
                           ?s a ?src .
                           FILTER (!STRSTARTS(STR(?src), 'http://www.w3.org/2002/07/owl#'))
@@ -352,7 +363,7 @@ class OntoGraf():
                     select ?src ?dt (COUNT(?src) as ?num) where {
                       {
                         select ?src ?dt where {
-                          ?s <$pred> ?o .
+                          $pattern
                           FILTER(!ISBLANK(?s))
                           ?s a ?src .
                           FILTER (!STRSTARTS(STR(?src), 'http://www.w3.org/2002/07/owl#'))
@@ -383,7 +394,7 @@ class OntoGraf():
                       select ?src ?tgt (COUNT(?src) as ?num) where {
                         {
                           select ?src ?tgt where {
-                            ?s <$pred> ?o .
+                            $pattern
                             FILTER(!ISBLANK(?s))
                             ?s a ?src .
                             FILTER (!STRSTARTS(STR(?src), 'http://www.w3.org/2002/07/owl#'))
@@ -401,7 +412,7 @@ class OntoGraf():
                       select ?src ?dt (COUNT(?src) as ?num) where {
                         {
                           select ?src ?dt where {
-                            ?s <$pred> ?o .
+                            $pattern
                             FILTER(!ISBLANK(?s))
                             FILTER(isLITERAL(?o))
                             ?s a ?src .
@@ -415,8 +426,9 @@ class OntoGraf():
                   }
                 }
                 """
-            query_text = Template(type_query).substitute(pred=pred_row['predicate'],
-                                                         limit=self.limit)
+            query_text = Template(type_query).substitute(
+                pattern=self.filtered_graph_pattern(pred_row['predicate']),
+                limit=self.limit)
             for type_row in self.select_query(query_text):
                 if 'src' not in type_row or int(type_row.get('num', 0)) < self.threshold:
                     continue
@@ -486,3 +498,47 @@ class OntoGraf():
         self.graf.write(self.outdot)
         self.graf.write_png(self.outpng)
         logging.debug("Plots saved")
+
+    def ontology_matches_filter(self, ontology):
+        if self.include:
+            return ontology in self.include
+        elif self.exclude:
+            return ontology not in self.exclude
+        elif self.include_pattern:
+            return any(re.search(pattern, ontology) for pattern in self.include_pattern)
+        elif self.exclude_pattern:
+            return not any(re.search(pattern, ontology) for pattern in self.exclude_pattern)
+        else:
+            return True
+
+    def filtered_graph_pattern(self, predicate):
+        if self.include:
+            return f"""
+            VALUES ?graph {{{" ".join(f"<{i}>" for i in self.include)}}}
+            GRAPH ?graph {{
+                ?s <{predicate}> ?o .
+            }}
+            """
+        elif self.exclude:
+            return f"""
+            GRAPH ?graph {{
+                ?s <{predicate}> ?o .
+            }}
+            FILTER (?graph NOT IN ({", ".join(f"<{e}>" for e in self.exclude)}))
+            """
+        elif self.include_pattern:
+            return f"""
+            GRAPH ?graph {{
+                ?s <{predicate}> ?o .
+            }}
+            FILTER ({" || ".join(f"REGEX(STR(?graph), '{i}')" for i in self.include_pattern)})
+            """
+        elif self.exclude_pattern:
+            return f"""
+            GRAPH ?graph {{
+                ?s <{predicate}> ?o .
+            }}
+            FILTER ({" && ".join(f"!REGEX(STR(?graph), '{e}')" for e in self.exclude_pattern)})
+            """
+        else:
+            return f'?s <{predicate}> ?o .'

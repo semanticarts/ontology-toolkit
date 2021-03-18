@@ -45,13 +45,22 @@ class UriValidator(argparse.Action):
     # No public method needed
     # pylint: disable=R0903
     def __call__(self, parser, namespace, values, option_string=None):
-        """First argument is a valid URI, 2nd a valid semantic version."""
-        iri = None
+        """Argument is a valid URI or list of URIs."""
+        if isinstance(values, list):
+            uris = list(self.valid_uri(parser, u) for u in values)
+            setattr(namespace, self.dest, getattr(namespace, self.dest) + uris)
+        else:
+            uri = self.valid_uri(parser, values)
+            setattr(namespace, self.dest, uri)
+
+    @staticmethod
+    def valid_uri(parser, values):
+        uri = None
         if _uri_validator(values):
-            iri = URIRef(values)
+            uri = URIRef(values)
         else:
             parser.error(f'Invalid URI {values}')
-        setattr(namespace, self.dest, iri)
+        return uri
 
 
 class OntologyUriValidator(argparse.Action):
@@ -197,7 +206,7 @@ def configure_arg_parser():
                                      " (default 10)")
     scope_control = graphic_parser.add_mutually_exclusive_group()
     scope_control.add_argument("--include", nargs="*", default=[],
-                               action=OntologyUriValidator,
+                               action=UriValidator,
                                help="If specified for --schema, only ontologies matching the specified"
                                     " URIs will be shown in full detail. If specified with --data, only"
                                     " triples in the named graphs mentioned will be considered (this also"
@@ -212,7 +221,7 @@ def configure_arg_parser():
                                     " graph). For large graphs this option is significantly slower than"
                                     " using --include.")
     scope_control.add_argument("--exclude", nargs="*", default=[],
-                               action=OntologyUriValidator,
+                               action=UriValidator,
                                help="If specified for --schema, ontologies matching the specified"
                                     " URIs will be omitted from the graph. If specified with --data, "
                                     " triples in the named graphs mentioned will be excluded (this also"
