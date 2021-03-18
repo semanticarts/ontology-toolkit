@@ -195,6 +195,7 @@ def configure_arg_parser():
     graphic_parser.add_argument("--predicate-threshold", type=int, default=10,
                                 help="Ignore predicates which occur less than PREDICATE_THRESHOLD times"
                                      " (default 10)")
+    scope_control = graphic_parser.add_mutually_exclusive_group()
     graphic_parser.add_argument('-v', '--version', help="Version to place in graphic",
                                 action="store")
     graphic_parser.add_argument('-w', '--wee', action="store_true",
