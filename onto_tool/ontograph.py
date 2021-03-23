@@ -13,7 +13,7 @@ import os
 import re
 import sys
 from collections import defaultdict
-from math import log
+from math import log, pow
 from string import Template
 from time import perf_counter
 from urllib.parse import urlparse, urlunparse
@@ -28,7 +28,7 @@ from rdflib.util import guess_format
 # Ignore \l - uses them as a line separator
 # pylint: disable=W1401
 
-class OntoGraf():
+class OntoGraf:
     def __init__(self, files, repo=None, **kwargs):
         self.wee = kwargs.get('wee', False)
         title = kwargs.get('title', 'Gist')
@@ -57,7 +57,8 @@ class OntoGraf():
         self.limit = kwargs.get('limit', 500000)
         self.threshold = kwargs.get('threshold', 10)
         self.node_data = {}
-        self.arrowcolor = "darkorange2"
+        self.arrow_color = "darkorange2"
+        self.shacl_color = "darkgreen"
         self.arrowhead = "vee"
 
         self.include = kwargs.get('include')
@@ -65,8 +66,14 @@ class OntoGraf():
         self.include_pattern = kwargs.get('include_pattern')
         self.exclude_pattern = kwargs.get('exclude_pattern')
 
+        self.superclasses = defaultdict(list)
+
+        self.show_shacl = kwargs.get('show_shacl')
+        self.shapes = defaultdict(list)
+
     @staticmethod
     def anonymize_url(url):
+        """Remove username and password from URI, if present."""
         parsed = urlparse(url)
         return urlunparse((parsed.scheme,
                            re.sub('^.*@', '', parsed.netloc),
@@ -101,8 +108,12 @@ class OntoGraf():
 
     @staticmethod
     def strip_uri(uri):
-        return re.sub(r'^.*[/#](gist)?(.*?)(X.x.x|\d+.\d+.\d+)?$', '\\2',
-                      re.sub(r'[#/]$', '', str(uri)))
+        stripped = re.sub(r'^.*[/#](.*?)(X.x.x|\d+.\d+.\d+)?$', '\\1',
+                          re.sub(r'[#/]$', '', str(uri)))
+        if not stripped:
+            logging.warning("Stripping %s went horribly wrong", uri)
+            return uri
+        return stripped
 
     def gather_schema_info_from_files(self):
         self.node_data = {}
@@ -242,7 +253,7 @@ class OntoGraf():
 
                 for imported in imports:
                     edge = pydot.Edge(ontology_name, imported,
-                                      color=self.arrowcolor,
+                                      color=self.arrow_color,
                                       arrowhead=self.arrowhead)
                     self.graf.add_edge(edge)
         self.graf.write(self.outdot)
@@ -253,7 +264,7 @@ class OntoGraf():
     @staticmethod
     def print_progress_bar(iteration, total,
                            prefix='', suffix='', decimals=1, length=100,
-                           fill='X', printEnd="\r"):
+                           fill='X', print_end="\r"):
         """
         Stolen from https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console
         Call in a loop to create terminal progress bar
@@ -265,14 +276,14 @@ class OntoGraf():
             decimals    - Optional  : positive number of decimals in percent complete (Int)
             length      - Optional  : character length of bar (Int)
             fill        - Optional  : bar fill character (Str)
-            printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+            print_end   - Optional  : end character (e.g. "\r", "\r\n") (Str)
         """
         # if not sys.stdout.isatty():
         #     return
         percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
         filled_length = int(length * iteration // total)
         bar = fill * filled_length + '-' * (length - filled_length)
-        print(f'\r{prefix} |{bar}| {percent}% {suffix}', end=printEnd)
+        print(f'\r{prefix} |{bar}| {percent}% {suffix}', end=print_end)
         # Print New Line on Complete
         if iteration == total:
             print()
@@ -308,17 +319,86 @@ class OntoGraf():
             logging.warning('No interesting predicates found in %s', self.repo)
             return
 
-        for count, pred_row in enumerate(all_predicates):
-            predicate_str = pred_row['label'] if pred_row.get('label') \
-                else self.strip_uri(pred_row['predicate'])
+        for count, predicate_row in enumerate(all_predicates):
+            predicate = predicate_row['predicate']
+            predicate_str = predicate_row['label'] if predicate_row.get('label') \
+                else self.strip_uri(predicate)
 
-            self.print_progress_bar(count, len(all_predicates),
-                                    prefix='Processing predicates:',
-                                    suffix=predicate_str + ' ' * 20, length=50)
+            if logging.root.getEffectiveLevel() != logging.DEBUG:
+                self.print_progress_bar(count, len(all_predicates),
+                                        prefix='Processing predicates:',
+                                        suffix=predicate_str + ' ' * 20, length=50)
             pre_time = perf_counter()
-            pred_type = pred_row.get('type')
-            if pred_type == str(OWL.ObjectProperty):
-                type_query = """
+            query_text = self.create_predicate_query(predicate, predicate_row.get('type'), self.limit)
+            predicate_usage = list(self.select_query(query_text))
+            logging.debug("%s items returned for %s", len(predicate_usage), predicate)
+            for usage in predicate_usage:
+                if 'src' not in usage or int(usage.get('num', 0)) < self.threshold:
+                    continue
+                if usage['src'] not in self.node_data:
+                    src = {
+                        'label': usage.get('srcLabel'),
+                        'links': {},
+                        'data': {}
+                    }
+                    self.node_data[usage['src']] = src
+                else:
+                    src = self.node_data[usage['src']]
+                if usage.get('dt'):
+                    src['data'][(predicate, predicate_str, self.strip_uri(usage['dt']))] = int(usage['num'])
+                else:
+                    if usage['tgt'] not in self.node_data:
+                        self.node_data[usage['tgt']] = {
+                            'label': usage.get('tgtLabel'),
+                            'links': {},
+                            'data': {}
+                        }
+                    src['links'][(predicate, predicate_str, usage['tgt'])] = int(usage['num'])
+
+            logging.debug("Fetching %s took %d seconds", str(predicate_row), perf_counter() - pre_time)
+
+        if logging.root.getEffectiveLevel() != logging.DEBUG:
+            self.print_progress_bar(len(all_predicates), len(all_predicates),
+                                    prefix='Processing predicates:', suffix='Complete', length=50)
+
+        inheritance_query = """
+        prefix owl: <http://www.w3.org/2002/07/owl#>
+        prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+        select ?class ?parent where {
+          {
+              ?class rdfs:subClassOf+ ?parent .
+          }
+          UNION
+          {
+             ?class (owl:equivalentClass|rdfs:subClassOf)/(owl:unionOf|owl:intersectionOf)/rdf:rest*/rdf:first ?parent .
+            ?parent a owl:Class
+          }
+          filter (!isblank(?class) && !isblank(?parent))
+        }
+        """
+        # for inheritance_info in self.select_query(inheritance_query):
+        #     self.superclasses[inheritance_info['class']].append(inheritance_info['parent'])
+        # TODO Coalesce parent and child class references?
+
+        if self.show_shacl:
+            shacl_query = """
+            prefix sh: <http://www.w3.org/ns/shacl#>
+
+            select distinct ?class ?property where {
+              ?shape sh:targetClass ?class .
+              { ?shape sh:property/sh:path ?property . }
+              UNION
+              { ?shape (sh:and|sh:or|sh:xone|sh:not|rdf:first|rdf:rest)+/sh:path ?property }
+            }
+            """
+            for row in self.select_query(shacl_query):
+                self.shapes[row['class']].append(row['property'])
+
+    def create_predicate_query(self, predicate, predicate_type, limit):
+        if predicate_type == str(OWL.ObjectProperty):
+            type_query = """
                 prefix owl: <http://www.w3.org/2002/07/owl#>
                 prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 prefix xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -347,8 +427,8 @@ class OntoGraf():
                   OPTIONAL { ?tgt skos:prefLabel|rdfs:label ?tgtLabel }
                 }
                 """
-            elif pred_type == str(OWL.DatatypeProperty):
-                type_query = """
+        elif predicate_type == str(OWL.DatatypeProperty):
+            type_query = """
                 prefix owl: <http://www.w3.org/2002/07/owl#>
                 prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 prefix xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -376,8 +456,8 @@ class OntoGraf():
                   OPTIONAL { ?src skos:prefLabel|rdfs:label ?srcLabel }
                 }
                 """
-            else:
-                type_query = """
+        else:
+            type_query = """
                 prefix owl: <http://www.w3.org/2002/07/owl#>
                 prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 prefix xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -427,40 +507,17 @@ class OntoGraf():
                   }
                 }
                 """
-            query_text = Template(type_query).substitute(
-                pattern=self.filtered_graph_pattern(pred_row['predicate']),
-                limit=self.limit)
-            for type_row in self.select_query(query_text):
-                if 'src' not in type_row or int(type_row.get('num', 0)) < self.threshold:
-                    continue
-                if type_row['src'] not in self.node_data:
-                    src = {
-                        'label': type_row.get('srcLabel'),
-                        'links': {},
-                        'data': {}
-                    }
-                    self.node_data[type_row['src']] = src
-                else:
-                    src = self.node_data[type_row['src']]
-                if type_row.get('dt'):
-                    src['data'][(predicate_str, self.strip_uri(type_row['dt']))] = int(type_row['num'])
-                else:
-                    if type_row['tgt'] not in self.node_data:
-                        self.node_data[type_row['tgt']] = {
-                            'label': type_row.get('tgtLabel'),
-                            'links': {},
-                            'data': {}
-                        }
-                    src['links'][(predicate_str, type_row['tgt'])] = int(type_row['num'])
+        query_text = Template(type_query).substitute(
+            pattern=self.filtered_graph_pattern(predicate),
+            limit=limit)
+        return query_text
 
-            logging.debug("Fetching %s took %d seconds", str(pred_row), perf_counter() - pre_time)
-
-        self.print_progress_bar(len(all_predicates), len(all_predicates),
-                                prefix='Processing predicates:', suffix='Complete', length=50)
+    MAX_LINE_WIDTH = 5
 
     @staticmethod
-    def line_width(num_used):
-        return min(5, max(1, round(log(num_used, 100))))
+    def line_width(num_used, graph_max):
+        """Scale line width relative to the most commonly occurring edge for the graph"""
+        return min(5, max(1, round(log(num_used, pow(graph_max, 1/OntoGraf.MAX_LINE_WIDTH)))))
 
     def create_instance_graf(self, data_dict=None):
         self.graf = pydot.Dot(graph_type='digraph',
@@ -478,21 +535,39 @@ class OntoGraf():
         })
         if data_dict is None:
             data_dict = self.node_data
+        logging.debug("Node data: %s", data_dict)
+
+        # Determine the maximum number any edge occurs in the data, so the edge widths can be properly scaled
+        max_common = max(occurs for class_data in data_dict.values() for occurs in class_data['links'].values())
+
         for class_, class_data in data_dict.items():
-            class_info = "{}|{}".format(
-                class_data['label'] if class_data['label'] else self.strip_uri(class_),
-                "\\l".join(f"{prop}: {dt}" for prop, dt in class_data['data'].keys()))
+            class_info = \
+                """<<table border="0" cellspacing="0" cellborder="1">
+                 <tr>
+                  <td align="center" bgcolor="{label_bg}"><font color="{label_fg}">{class_label}</font></td>
+                 </tr>
+                 <tr>
+                  <td align="center">{attribute_text}</td>
+                 </tr>
+                </table>>""".format(
+                    label_fg="white" if class_ in self.shapes else "black",
+                    label_bg="darkgreen" if class_ in self.shapes else "white",
+                    class_label=class_data['label'] if class_data['label'] else self.strip_uri(class_),
+                    attribute_text="<br/>".join(
+                        '<font color="{color}">{prop}: {dt}</font>'.format(
+                            color="darkgreen" if predicate in self.shapes[class_] else "black",
+                            prop=prop, dt=dt) for predicate, prop, dt in class_data['data'].keys()))
             node = pydot.Node(name='"' + class_ + '"',
                               label=class_info)
 
             self.graf.add_node(node)
 
             for link, num in class_data['links'].items():
-                pred, target = link
+                predicate, predicate_str, target = link
                 edge = pydot.Edge(class_, target,
-                                  label=pred,
-                                  penwidth=self.line_width(num),
-                                  color=self.arrowcolor,
+                                  label=predicate_str,
+                                  penwidth=self.line_width(num, max_common),
+                                  color=self.shacl_color if predicate in self.shapes[class_] else self.arrow_color,
                                   arrowhead=self.arrowhead)
                 self.graf.add_edge(edge)
 

@@ -199,6 +199,11 @@ def configure_arg_parser():
     graphic_parser.add_argument('-o', '--output', action="store",
                                 default=os.getcwd(),
                                 help="Output directory for generated graphics")
+    graphic_parser.add_argument('--show-shacl', action="store_true",
+                                help="Attempts to discover which classes and properties have corresponding"
+                                     " SHACL shapes and colors them green on the graph. This detection relies"
+                                     " on the presence of sh:targetClass targeting, and can be confused by"
+                                     " complex logical shapes or Advanced SHACL features such as SPARQL queries.")
     sampling_limits = graphic_parser.add_argument_group(title='Sampling Limits')
     sampling_limits.add_argument("--instance-limit", type=int, default=500000,
                                 help="Specify a limit on how many triples to consider that use any one"
@@ -502,6 +507,18 @@ def generate_graphic(action, onto_files, endpoint, **kwargs):
         Path of directory where graph will be output.
     version : string
         Version to be used in graphic title.
+    include: list(string)
+        List of ontology URIs to include for schema graph, or named graphs to consider for data graph.
+    include_pattern: list(string)
+        List of regex against which ontology URIs are matched for inclusion in schema graph, or
+        named graphs are matched for inclusion in a data graph.
+    exclude: list(string)
+        List of ontology URIs to exclude from schema graph, or named graphs to exclude from data graph.
+    exclude_pattern: list(string)
+        List of regex against which ontology URIs are matched for exclusion from schema graph, or
+        named graphs are matched for exclusion from a data graph.
+    show_shacl: boolean
+        If True, attempt to detect SHACL shapes matching classes and properties.
 
     Returns
     -------
@@ -1305,7 +1322,8 @@ def main(arguments):
                          wee=args.wee, outpath=args.output, version=args.version,
                          include=args.include, exclude=args.exclude,
                          include_pattern=args.include_pattern,
-                         exclude_pattern=args.exclude_pattern)
+                         exclude_pattern=args.exclude_pattern,
+                         show_shacl=args.show_shacl)
         return
 
     of = 'pretty-xml' if args.format == 'xml' else args.format
