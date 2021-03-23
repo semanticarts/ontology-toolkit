@@ -118,7 +118,8 @@ Graphics are exported both as ```png``` files and also as a ```dot``` file.  Thi
 
 ```
 usage: onto_tool graphic [-h] [-e ENDPOINT] [--schema | --data] [--debug]
-                         [-o OUTPUT] [--instance-limit INSTANCE_LIMIT]
+                         [-o OUTPUT] [--show-shacl]
+                         [--instance-limit INSTANCE_LIMIT]
                          [--predicate-threshold PREDICATE_THRESHOLD]
                          [--include [INCLUDE [INCLUDE ...]] |
                          --include-pattern [INCLUDE_REGEX [INCLUDE_REGEX ...]]
@@ -140,6 +141,12 @@ optional arguments:
   --debug               Emit verbose debug output
   -o OUTPUT, --output OUTPUT
                         Output directory for generated graphics
+  --show-shacl          Attempts to discover which classes and properties have
+                        corresponding SHACL shapes and colors them green on
+                        the graph. This detection relies on the presence of
+                        sh:targetClass targeting, and can be confused by
+                        complex logical shapes or Advanced SHACL features such
+                        as SPARQL queries.
   -v VERSION, --version VERSION
                         Version to place in graphic
   -w, --wee             a version of the graphic with only core information
