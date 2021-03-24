@@ -529,36 +529,45 @@ class OntoGraf:
         self.graf.set_node_defaults(**{
             'color': 'lightgray',
             'style': 'unfilled',
-            'shape': 'record',
+            'shape': 'rect',
             'fontname': 'Bitstream Vera Sans',
             'fontsize': '10'
         })
         if data_dict is None:
             data_dict = self.node_data
         logging.debug("Node data: %s", data_dict)
+        logging.debug("Shape data: %s", self.shapes)
 
         # Determine the maximum number any edge occurs in the data, so the edge widths can be properly scaled
         max_common = max(occurs for class_data in data_dict.values() for occurs in class_data['links'].values())
 
         for class_, class_data in data_dict.items():
-            class_info = \
-                """<<table border="0" cellspacing="0" cellborder="1">
-                 <tr>
-                  <td align="center" bgcolor="{label_bg}"><font color="{label_fg}">{class_label}</font></td>
-                 </tr>
-                 <tr>
-                  <td align="center">{attribute_text}</td>
-                 </tr>
-                </table>>""".format(
-                    label_fg="white" if class_ in self.shapes else "black",
-                    label_bg="darkgreen" if class_ in self.shapes else "white",
-                    class_label=class_data['label'] if class_data['label'] else self.strip_uri(class_),
-                    attribute_text="<br/>".join(
-                        '<font color="{color}">{prop}: {dt}</font>'.format(
-                            color="darkgreen" if predicate in self.shapes[class_] else "black",
-                            prop=prop, dt=dt) for predicate, prop, dt in class_data['data'].keys()))
-            node = pydot.Node(name='"' + class_ + '"',
-                              label=class_info)
+            if class_data['data']:
+                class_info = \
+                    """<<table border="0" cellspacing="0" cellborder="1">
+                     <tr>
+                      <td align="center" bgcolor="{label_bg}"><font color="{label_fg}">{class_label}</font></td>
+                     </tr>
+                     <tr>
+                      <td align="center">{attribute_text}</td>
+                     </tr>
+                    </table>>""".format(
+                        label_fg="white" if class_ in self.shapes else "black",
+                        label_bg="darkgreen" if class_ in self.shapes else "white",
+                        class_label=class_data['label'] if class_data['label'] else self.strip_uri(class_),
+                        attribute_text="<br/>".join(
+                            '<font color="{color}">{prop}: {dt}</font>'.format(
+                                color="darkgreen" if predicate in self.shapes[class_] else "black",
+                                prop=prop, dt=dt) for predicate, prop, dt in class_data['data'].keys()))
+                node = pydot.Node(name='"' + class_ + '"',
+                                  margin="0",
+                                  label=class_info)
+            else:
+                node = pydot.Node(name='"' + class_ + '"',
+                                  label=class_data['label'] if class_data['label'] else self.strip_uri(class_),
+                                  style='filled',
+                                  fillcolor="darkgreen" if class_ in self.shapes else "white",
+                                  fontcolor="white" if class_ in self.shapes else "black")
 
             self.graf.add_node(node)
 
