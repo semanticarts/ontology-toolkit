@@ -118,9 +118,15 @@ Graphics are exported both as ```png``` files and also as a ```dot``` file.  Thi
 
 ```
 usage: onto_tool graphic [-h] [-e ENDPOINT] [--schema | --data] [--debug]
-                         [-o OUTPUT] [--instance-limit INSTANCE_LIMIT]
+                         [-o OUTPUT] [--show-shacl]
+                         [--instance-limit INSTANCE_LIMIT]
                          [--predicate-threshold PREDICATE_THRESHOLD]
-                         [-v VERSION] [-w]
+                         [--include [INCLUDE [INCLUDE ...]] |
+                         --include-pattern [INCLUDE_REGEX [INCLUDE_REGEX ...]]
+                         | --exclude [EXCLUDE [EXCLUDE ...]] |
+                         --exclude-pattern
+                         [EXCLUDE_REGEX [EXCLUDE_REGEX ...]]] [-v VERSION]
+                         [-w]
                          [ontology [ontology ...]]
 
 positional arguments:
@@ -135,15 +141,56 @@ optional arguments:
   --debug               Emit verbose debug output
   -o OUTPUT, --output OUTPUT
                         Output directory for generated graphics
-  --instance-limit INSTANCE_LIMIT
-                        Size limit on instance queries (default 500000)
-  --predicate-threshold PREDICATE_THRESHOLD
-                        Ignore predicates which occur less than
-                        PREDICATE_THRESHOLD times (default 10)
+  --show-shacl          Attempts to discover which classes and properties have
+                        corresponding SHACL shapes and colors them green on
+                        the graph. This detection relies on the presence of
+                        sh:targetClass targeting, and can be confused by
+                        complex logical shapes or Advanced SHACL features such
+                        as SPARQL queries.
   -v VERSION, --version VERSION
                         Version to place in graphic
   -w, --wee             a version of the graphic with only core information
                         about ontology and imports
+
+Sampling Limits:
+  --instance-limit INSTANCE_LIMIT
+                        Specify a limit on how many triples to consider that
+                        use any one predicate to find (default 500000). This
+                        option may result in an incomplete version of the
+                        diagram, missing certain links.
+  --predicate-threshold PREDICATE_THRESHOLD
+                        Ignore predicates which occur fewer than
+                        PREDICATE_THRESHOLD times (default 10)
+
+Filters (only one can be used):
+  --include [INCLUDE [INCLUDE ...]]
+                        If specified for --schema, only ontologies matching
+                        the specified URIs will be shown in full detail. If
+                        specified with --data, only triples in the named
+                        graphs mentioned will be considered (this also
+                        excludes any triples in the default graph).
+  --include-pattern [INCLUDE_REGEX [INCLUDE_REGEX ...]]
+                        If specified for --schema, only ontologies matching
+                        the specified URI pattern will be shown in full
+                        detail. If specified with --data, only triples in the
+                        named graphs matching the pattern will be considered
+                        (this also excludes any triples in the default graph).
+                        For large graphs this option is significantly slower
+                        than using --include.
+  --exclude [EXCLUDE [EXCLUDE ...]]
+                        If specified for --schema, ontologies matching the
+                        specified URIs will be omitted from the graph. If
+                        specified with --data, triples in the named graphs
+                        mentioned will be excluded (this also excludes any
+                        triples in the default graph).
+  --exclude-pattern [EXCLUDE_REGEX [EXCLUDE_REGEX ...]]
+                        If specified for --schema, ontologies matching the
+                        specified URI pattern will be omitted from the graph.
+                        If specified with --data, triples in the named graphs
+                        matching the pattern will be ignored (this also
+                        excludes any triples in the default graph). For large
+                        graphs this option is significantly slower than using
+                        --exclude.
 ```
 
 ### Bundle

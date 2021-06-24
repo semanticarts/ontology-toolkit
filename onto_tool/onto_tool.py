@@ -45,13 +45,22 @@ class UriValidator(argparse.Action):
     # No public method needed
     # pylint: disable=R0903
     def __call__(self, parser, namespace, values, option_string=None):
-        """First argument is a valid URI, 2nd a valid semantic version."""
-        iri = None
+        """Argument is a valid URI or list of URIs."""
+        if isinstance(values, list):
+            uris = list(self.valid_uri(parser, u) for u in values)
+            setattr(namespace, self.dest, getattr(namespace, self.dest) + uris)
+        else:
+            uri = self.valid_uri(parser, values)
+            setattr(namespace, self.dest, uri)
+
+    @staticmethod
+    def valid_uri(parser, values):
+        uri = None
         if _uri_validator(values):
-            iri = URIRef(values)
+            uri = URIRef(values)
         else:
             parser.error(f'Invalid URI {values}')
-        setattr(namespace, self.dest, iri)
+        return uri
 
 
 class OntologyUriValidator(argparse.Action):
@@ -190,11 +199,49 @@ def configure_arg_parser():
     graphic_parser.add_argument('-o', '--output', action="store",
                                 default=os.getcwd(),
                                 help="Output directory for generated graphics")
-    graphic_parser.add_argument("--instance-limit", type=int, default=500000,
-                                help="Size limit on instance queries (default 500000)")
-    graphic_parser.add_argument("--predicate-threshold", type=int, default=10,
-                                help="Ignore predicates which occur less than PREDICATE_THRESHOLD times"
+    graphic_parser.add_argument('--show-shacl', action="store_true",
+                                help="Attempts to discover which classes and properties have corresponding"
+                                     " SHACL shapes and colors them green on the graph. This detection relies"
+                                     " on the presence of sh:targetClass targeting, and can be confused by"
+                                     " complex logical shapes or Advanced SHACL features such as SPARQL queries.")
+    sampling_limits = graphic_parser.add_argument_group(title='Sampling Limits')
+    sampling_limits.add_argument("--instance-limit", type=int, default=500000,
+                                help="Specify a limit on how many triples to consider that use any one"
+                                     " predicate to find (default 500000). This option may result in an"
+                                     " incomplete version of the diagram, missing certain links.")
+    sampling_limits.add_argument("--predicate-threshold", type=int, default=10,
+                                help="Ignore predicates which occur fewer than PREDICATE_THRESHOLD times"
                                      " (default 10)")
+    graph_filters = graphic_parser.add_argument_group(title="Filters (only one can be used)")
+    scope_control = graph_filters.add_mutually_exclusive_group()
+    scope_control.add_argument("--include", nargs="*", default=[],
+                               action=UriValidator,
+                               help="If specified for --schema, only ontologies matching the specified"
+                                    " URIs will be shown in full detail. If specified with --data, only"
+                                    " triples in the named graphs mentioned will be considered (this also"
+                                    " excludes any triples in the default graph).")
+    scope_control.add_argument("--include-pattern", nargs="*", default=[],
+                               metavar="INCLUDE_REGEX",
+                               help="If specified for --schema, only ontologies matching the specified"
+                                    " URI pattern will be shown in full detail. If specified with --data,"
+                                    " only triples in the named graphs matching the pattern"
+                                    " will be considered (this also excludes any triples in the default"
+                                    " graph). For large graphs this option is significantly slower than"
+                                    " using --include.")
+    scope_control.add_argument("--exclude", nargs="*", default=[],
+                               action=UriValidator,
+                               help="If specified for --schema, ontologies matching the specified"
+                                    " URIs will be omitted from the graph. If specified with --data, "
+                                    " triples in the named graphs mentioned will be excluded (this also"
+                                    " excludes any triples in the default graph).")
+    scope_control.add_argument("--exclude-pattern", nargs="*", default=[],
+                               metavar="EXCLUDE_REGEX",
+                               help="If specified for --schema, ontologies matching the specified"
+                                    " URI pattern will be omitted from the graph. If specified with --data,"
+                                    " triples in the named graphs matching the pattern"
+                                    " will be ignored (this also excludes any triples in the default"
+                                    " graph). For large graphs this option is significantly slower than"
+                                    " using --exclude.")
     graphic_parser.add_argument('-v', '--version', help="Version to place in graphic",
                                 action="store")
     graphic_parser.add_argument('-w', '--wee', action="store_true",
@@ -210,14 +257,15 @@ def parse_rdf(g: Graph, onto_file, rdf_format=None):
     try:
         g.parse(onto_file, format=rdf_format if rdf_format is not None else guess_format(onto_file))
     except BadSyntax as se:
-        text = se._str.decode('utf-8')
+        # noinspection PyProtectedMember
+        text, why = (se._str.decode('utf-8'), se._why)
         if len(text) > 30:
             text = text[0:27] + '...'
-        logging.error("Error parsing %s at %d: %s: %s", onto_file, se.lines + 1, se._why, text)
+        logging.error("Error parsing %s at %d: %s: %s", onto_file, se.lines + 1, why, text)
         exit(1)
 
 
-def findSingleOntology(g, onto_file):
+def find_single_ontology(g, onto_file):
     """Verify that file has a single ontology defined and return the IRI."""
     ontologies = list(g.subjects(RDF.type, OWL.Ontology))
     if len(ontologies) == 0:
@@ -315,7 +363,7 @@ def add_defined_by(g, ontology_iri, mode='strict', replace=False, versioned=Fals
             g.add((d.defined, RDFS.isDefinedBy, ontology_iri))
 
 
-def updateDependencyVersions(g, ontology, versions):
+def update_dependency_versions(g, ontology, versions):
     """Update ontology dependency versions.
 
     The versions dict maps ontology IRI to their versions.
@@ -324,39 +372,39 @@ def updateDependencyVersions(g, ontology, versions):
     update them to the new version.
     """
     # Gather current dependencies
-    currentDeps = g.objects(ontology, OWL.imports)
+    current_deps = g.objects(ontology, OWL.imports)
     for dv in versions:
         dep, ver = dv
         pattern = re.compile(f'{dep}(\\d+\\.\\d+\\.\\d+)?')
-        match = next((c for c in currentDeps if pattern.search(str(c))), None)
+        match = next((c for c in current_deps if pattern.search(str(c))), None)
         if match:
             # Updating current dependency
             current = pattern.search(str(match)).group(1)
             if current:
                 logging.debug(f'Removing dependency {current} for {dep}')
-                newVersionURI = URIRef(str(match).replace(current, ver))
+                new_version_uri = URIRef(str(match).replace(current, ver))
             else:
                 logging.debug(f'Removing unversioned depenendency for {dep}')
-                newVersionURI = URIRef(f'{str(match)}{ver}')
+                new_version_uri = URIRef(f'{str(match)}{ver}')
             g.remove((ontology, OWL.imports, match))
 
-            g.add((ontology, OWL.imports, newVersionURI))
-            logging.info(f'Updated dependency to {newVersionURI}')
+            g.add((ontology, OWL.imports, new_version_uri))
+            logging.info(f'Updated dependency to {new_version_uri}')
         else:
             # New versioned dependency, assuming full URI
-            newVersionURI = URIRef(f'{dep}{ver}')
-            g.add((ontology, OWL.imports, newVersionURI))
-            logging.info(f'Added dependency for {newVersionURI}')
+            new_version_uri = URIRef(f'{dep}{ver}')
+            g.add((ontology, OWL.imports, new_version_uri))
+            logging.info(f'Added dependency for {new_version_uri}')
 
 
-def stripVersions(g, ontology=None):
+def strip_versions(g, ontology=None):
     """Remove versions (numeric or X.x.x placeholder) from imports."""
     # Gather current dependencies
     ontologies = [ontology] if ontology else list(g.subjects(RDF.type, OWL.Ontology))
     for o in ontologies:
-        currentDeps = g.objects(o, OWL.imports)
+        current_deps = g.objects(o, OWL.imports)
         pattern = re.compile('^(.*?)((\\d+|[Xx])\\.(\\d+|[Xx])\\.(\\d+|[Xx]))?$')
-        for d in currentDeps:
+        for d in current_deps:
             match = pattern.match(str(d))
             if match.group(2):
                 logging.debug(f'Removing version for {d}')
@@ -364,21 +412,21 @@ def stripVersions(g, ontology=None):
                 g.add((o, OWL.imports, URIRef(match.group(1))))
 
 
-def versionSensitiveMatch(reference, ontologies, versions):
+def version_sensitive_match(reference, ontologies, versions):
     """Check if reference is in ontologies, ignoring version."""
     match = re.match(r'^(.*?)((\d+|[Xx])\.(\d+|[Xx])\.(\d+|[Xx]))?$',
                      str(reference))
-    refWithoutVersion = match.group(1)
-    return URIRef(refWithoutVersion) in ontologies or reference in versions
+    ref_without_version = match.group(1)
+    return URIRef(ref_without_version) in ontologies or reference in versions
 
 
-def cleanMergeArtifacts(g, iri, version):
+def clean_merge_artifacts(g, iri, version):
     """Remove all existing ontology declaration, replace with new merged ontology."""
     ontologies = set(g.subjects(RDF.type, OWL.Ontology))
     versions = set(v for o in ontologies for v in g.objects(o, OWL.versionIRI))
-    externalImports = list(
+    external_imports = list(
         i for i in g.objects(subject=None, predicate=OWL.imports)
-        if not versionSensitiveMatch(i, ontologies, versions))
+        if not version_sensitive_match(i, ontologies, versions))
     for o in ontologies:
         logging.debug(f'Removing existing ontology {o}')
         for t in list(g.triples((o, None, None))):
@@ -387,16 +435,16 @@ def cleanMergeArtifacts(g, iri, version):
     g.add((iri, RDF.type, OWL.Ontology))
     g.add((iri, OWL.versionIRI, URIRef(str(iri) + version)))
     g.add((iri, OWL.versionInfo, Literal("Created by merge tool.", datatype=XSD.string)))
-    for i in externalImports:
+    for i in external_imports:
         logging.debug(f'Transferring external dependency {i} to {iri}')
         g.add((iri, OWL.imports, i))
 
 
-def expandFileRef(path):
+def expand_file_ref(path):
     """Expand file reference to a list of paths.
 
     If a file is provided, return as is. If a directory, return all .owl
-    files in the directory, outherwise interpret path as a glob pattern.
+    files in the directory, otherwise interpret path as a glob pattern.
     """
     if isfile(path):
         return [path]
@@ -405,12 +453,12 @@ def expandFileRef(path):
     return glob(path)
 
 
-def serializeToOutputDir(tools, output, version, file):
+def serialize_to_output_dir(tools, output, version, file):
     """Serialize ontology file using standard options."""
     base, ext = splitext(basename(file))
-    outputFile = join(output, f"{base}{version}{ext}")
+    output_file = join(output, f"{base}{version}{ext}")
     logging.debug(f"Serializing {file} to {output}")
-    serializeArgs = [
+    serialize_args = [
         "java",
         "-jar", join(tools, "rdf-toolkit.jar"),
         "-tfmt", "rdf-xml",
@@ -418,12 +466,12 @@ def serializeToOutputDir(tools, output, version, file):
         "-dtd",
         "-ibn",
         "-s", file,
-        "-t", outputFile]
-    subprocess.run(serializeArgs)
-    return outputFile
+        "-t", output_file]
+    subprocess.run(serialize_args)
+    return output_file
 
 
-def replacePatternInFile(file, from_pattern, to_string):
+def replace_patterns_in_file(file, from_pattern, to_string):
     """Replace regex pattern in file contents."""
     with open(file, 'r') as f:
         replaced = re.compile(from_pattern).sub(to_string, f.read())
@@ -431,13 +479,13 @@ def replacePatternInFile(file, from_pattern, to_string):
         f.write(replaced)
 
 
-def copyIfPresent(fromLoc, toLoc):
+def copy_if_present(from_loc, to_loc):
     """Copy file to new location if present."""
-    if isfile(fromLoc):
-        shutil.copy(fromLoc, toLoc)
+    if isfile(from_loc):
+        shutil.copy(from_loc, to_loc)
 
 
-def generateGraphic(action, onto_files, endpoint, **kwargs):
+def generate_graphic(action, onto_files, endpoint, **kwargs):
     """
     Generate ontology .dot and .png graphic.
 
@@ -459,13 +507,25 @@ def generateGraphic(action, onto_files, endpoint, **kwargs):
         Path of directory where graph will be output.
     version : string
         Version to be used in graphic title.
+    include: list(string)
+        List of ontology URIs to include for schema graph, or named graphs to consider for data graph.
+    include_pattern: list(string)
+        List of regex against which ontology URIs are matched for inclusion in schema graph, or
+        named graphs are matched for inclusion in a data graph.
+    exclude: list(string)
+        List of ontology URIs to exclude from schema graph, or named graphs to exclude from data graph.
+    exclude_pattern: list(string)
+        List of regex against which ontology URIs are matched for exclusion from schema graph, or
+        named graphs are matched for exclusion from a data graph.
+    show_shacl: boolean
+        If True, attempt to detect SHACL shapes matching classes and properties.
 
     Returns
     -------
     None.
 
     """
-    all_files = [file for ref in onto_files for file in expandFileRef(ref)]
+    all_files = [file for ref in onto_files for file in expand_file_ref(ref)]
     og = OntoGraf(all_files, repo=endpoint, **kwargs)
     if endpoint and all_files:
         logging.warning('Endpoint specified, ignoring files')
@@ -484,7 +544,7 @@ def generateGraphic(action, onto_files, endpoint, **kwargs):
 
 
 def __perform_export__(output, output_format, paths, context=None,
-                       strip_versions=False,
+                       remove_dependency_versions=False,
                        merge=None,
                        defined_by=None,
                        retain_defined_by=False,
@@ -537,19 +597,19 @@ def __perform_export__(output, output_format, paths, context=None,
         g = Graph()
         parse_graph = g
 
-    for onto_file in [file for ref in paths for file in expandFileRef(ref)]:
+    for onto_file in [file for ref in paths for file in expand_file_ref(ref)]:
         parse_rdf(parse_graph, onto_file)
 
     # Remove dep versions
-    if strip_versions:
-        stripVersions(parse_graph)
+    if remove_dependency_versions:
+        strip_versions(parse_graph)
 
     if merge:
-        cleanMergeArtifacts(parse_graph, URIRef(merge[0]), merge[1])
+        clean_merge_artifacts(parse_graph, URIRef(merge[0]), merge[1])
 
     # Add rdfs:isDefinedBy
     if defined_by:
-        ontology_iri = findSingleOntology(parse_graph, 'merged graph')
+        ontology_iri = find_single_ontology(parse_graph, 'merged graph')
         if ontology_iri is None:
             return
         add_defined_by(parse_graph, ontology_iri,
@@ -597,8 +657,8 @@ def __bundle_file_list(action, variables, ignore_target=False):
     Yields
     ------
     dict
-        Containes 'inputFile' and 'outputFile' unless ignore_target
-        is specifed.
+        Contains 'inputFile' and 'outputFile' unless ignore_target
+        is specified.
 
     """
     if 'includes' in action:
@@ -661,9 +721,9 @@ def __bundle_transform_java__(action, tool, variables):
             logging.error("Tool %s exited with %d: %s", interpreted_args, status.returncode, status.stderr)
             exit(1)
         if 'replace' in action:
-            replacePatternInFile(in_out['outputFile'],
-                                 action['replace']['from'].format(**invocation_vars),
-                                 action['replace']['to'].format(**invocation_vars))
+            replace_patterns_in_file(in_out['outputFile'],
+                                     action['replace']['from'].format(**invocation_vars),
+                                     action['replace']['to'].format(**invocation_vars))
 
 
 def __bundle_transform_sparql__(action, tool, variables):
@@ -696,9 +756,9 @@ def __bundle_transform_sparql__(action, tool, variables):
         g.serialize(destination=in_out['outputFile'], format=rdf_format, encoding='utf-8')
 
         if 'replace' in action:
-            replacePatternInFile(in_out['outputFile'],
-                                 action['replace']['from'].format(**variables),
-                                 action['replace']['to'].format(**variables))
+            replace_patterns_in_file(in_out['outputFile'],
+                                     action['replace']['from'].format(**variables),
+                                     action['replace']['to'].format(**variables))
 
 
 def __bundle_defined_by__(action, variables):
@@ -710,7 +770,7 @@ def __bundle_defined_by__(action, variables):
         parse_rdf(g, onto_file, rdf_format)
 
         # locate ontology
-        ontology = findSingleOntology(g, onto_file)
+        ontology = find_single_ontology(g, onto_file)
         if not ontology:
             logging.warning(f'Ignoring {onto_file}, no ontology found')
             # copy as unchanged
@@ -723,9 +783,9 @@ def __bundle_defined_by__(action, variables):
             g.serialize(destination=in_out['outputFile'],
                         format=rdf_format, encoding='utf-8')
         if 'replace' in action:
-            replacePatternInFile(in_out['outputFile'],
-                                 action['replace']['from'].format(**variables),
-                                 action['replace']['to'].format(**variables))
+            replace_patterns_in_file(in_out['outputFile'],
+                                     action['replace']['from'].format(**variables),
+                                     action['replace']['to'].format(**variables))
 
 
 def __bundle_copy__(action, variables):
@@ -734,9 +794,9 @@ def __bundle_copy__(action, variables):
         if isfile(in_out['inputFile']):
             shutil.copy(in_out['inputFile'], in_out['outputFile'])
             if 'replace' in action:
-                replacePatternInFile(in_out['outputFile'],
-                                     action['replace']['from'].format(**variables),
-                                     action['replace']['to'].format(**variables))
+                replace_patterns_in_file(in_out['outputFile'],
+                                         action['replace']['from'].format(**variables),
+                                         action['replace']['to'].format(**variables))
 
 
 def __bundle_move__(action, variables):
@@ -745,9 +805,9 @@ def __bundle_move__(action, variables):
         if isfile(in_out['inputFile']):
             shutil.move(in_out['inputFile'], in_out['outputFile'])
             if 'replace' in action:
-                replacePatternInFile(in_out['outputFile'],
-                                     action['replace']['from'].format(**variables),
-                                     action['replace']['to'].format(**variables))
+                replace_patterns_in_file(in_out['outputFile'],
+                                         action['replace']['from'].format(**variables),
+                                         action['replace']['to'].format(**variables))
 
 
 def __bundle_markdown__(action, variables):
@@ -772,7 +832,7 @@ def __bundle_graph__(action, variables):
     compact = action['compact'] if 'compact' in action else False
     og = OntoGraf([f['inputFile'] for f in __bundle_file_list(action, variables)],
                   outpath=documentation, wee=compact, title=title, version=version)
-    og.gather_info()
+    og.gather_schema_info_from_files()
     og.create_schema_graf()
 
 
@@ -906,9 +966,11 @@ def __verify_construct__(action, variables):
                                     query_text[0])
                 else:
                     if violation or fail_on_warning:
-                        logging.error("Verification query %s produced non-empty results:\n%s", query_text[0], serialized)
+                        logging.error("Verification query %s produced non-empty results:\n%s",
+                                      query_text[0], serialized)
                     else:
-                        logging.warning("Verification query %s produced non-empty results:\n%s", query_text[0], serialized)
+                        logging.warning("Verification query %s produced non-empty results:\n%s",
+                                        query_text[0], serialized)
                 if 'target' in action:
                     if not stop_on_fail:
                         # Treat 'target' as directory.
@@ -925,7 +987,7 @@ def __verify_construct__(action, variables):
                     if stop_on_fail:
                         break
         else:
-            raise Exception('Invalid query for SELECT verify: ' + query_text)
+            raise Exception(f'Invalid query for SELECT verify: {query_text}')
 
     if fail_count > 0:
         exit(1)
@@ -935,8 +997,8 @@ def __verify_shacl__(action, variables):
     data_graph = __build_graph_from_inputs__(action, variables)
     shape_graph = __build_graph_from_inputs__(action['shapes'], variables)
 
-    logging.debug("Data graph has %s triples", sum(1 for triple in data_graph))
-    logging.debug("Shape graph has %s triples", sum(1 for triple in shape_graph))
+    logging.debug("Data graph has %s triples", sum(1 for _ in data_graph))
+    logging.debug("Shape graph has %s triples", sum(1 for _ in shape_graph))
 
     conforms, results_graph, _ = \
         pyshacl.validate(
@@ -1035,7 +1097,7 @@ def __verify_ask__(action, variables):
                 if stop_on_fail:
                     break
         else:
-            raise Exception('Invalid query for ASK verify: ' + query_text)
+            raise Exception(f'Invalid query for ASK verify: {query_text}')
 
     if fail_count > 0:
         exit(1)
@@ -1104,7 +1166,7 @@ def __bundle_export__(action, variables):
     output.close()
 
 
-def bundleOntology(command_line_variables, bundle_path):
+def bundle_ontology(command_line_variables, bundle_path):
     """
     Bundle ontology and related artifacts for release.
 
@@ -1168,7 +1230,7 @@ def bundleOntology(command_line_variables, bundle_path):
             raise Exception('Unknown action ' + str(action))
 
 
-def exportOntology(args, output_format):
+def export_ontology(args, output_format):
     """Export one or more files as a single output.
 
     Optionally, strips dependency versions and merges ontologies into
@@ -1186,16 +1248,16 @@ def exportOntology(args, output_format):
                        args.versioned_definedBy)
 
 
-def updateOntology(args, output_format):
+def update_ontology(args, output_format):
     """Maintenance updates for ontology files."""
-    for onto_file in [file for ref in args.ontology for file in expandFileRef(ref)]:
+    for onto_file in [file for ref in args.ontology for file in expand_file_ref(ref)]:
         g = Graph()
         orig_format = guess_format(onto_file)
         parse_rdf(g, onto_file, orig_format)
         logging.debug(f'{onto_file} has {len(g)} triples')
 
         # locate ontology
-        ontology = findSingleOntology(g, onto_file)
+        ontology = find_single_ontology(g, onto_file)
         if not ontology:
             logging.warning(f'Ignoring {onto_file}, no ontology found')
             continue
@@ -1224,11 +1286,11 @@ def updateOntology(args, output_format):
 
         # Update dep versions
         if 'dependency_version' in args and args.dependency_version:
-            updateDependencyVersions(g, ontology, args.dependency_version)
+            update_dependency_versions(g, ontology, args.dependency_version)
 
         # Remove dep versions
         if 'strip_versions' in args and args.strip_versions:
-            stripVersions(g, ontology)
+            strip_versions(g, ontology)
 
         # Output
         if args.in_place:
@@ -1251,21 +1313,25 @@ def main(arguments):
         logging.basicConfig(level=logging.INFO)
 
     if args.command == 'bundle':
-        bundleOntology(args.variables, args.bundle)
+        bundle_ontology(args.variables, args.bundle)
         return
 
     if args.command == 'graphic':
-        generateGraphic(args.action, args.ontology, args.endpoint,
-                        limit=args.instance_limit, threshold=args.predicate_threshold,
-                        wee=args.wee, outpath=args.output, version=args.version)
+        generate_graphic(args.action, args.ontology, args.endpoint,
+                         limit=args.instance_limit, threshold=args.predicate_threshold,
+                         wee=args.wee, outpath=args.output, version=args.version,
+                         include=args.include, exclude=args.exclude,
+                         include_pattern=args.include_pattern,
+                         exclude_pattern=args.exclude_pattern,
+                         show_shacl=args.show_shacl)
         return
 
     of = 'pretty-xml' if args.format == 'xml' else args.format
 
     if args.command == 'export':
-        exportOntology(args, of)
+        export_ontology(args, of)
     else:
-        updateOntology(args, of)
+        update_ontology(args, of)
 
 
 def run_tool():
