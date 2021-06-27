@@ -90,6 +90,7 @@ properties:
           enum:
             - Java
             - sparql
+            - shell
       allOf:
         - if:
             properties:
@@ -106,6 +107,19 @@ properties:
                 minLength: 2
             required:
               - jar
+              - arguments
+        - if:
+            properties:
+              type:
+                const: shell
+          then:
+            properties:
+              arguments:
+                type: array
+                items:
+                  type: string
+                minLength: 2
+            required:
               - arguments
         - if:
             properties:
