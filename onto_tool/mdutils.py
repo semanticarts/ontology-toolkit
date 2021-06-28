@@ -11,7 +11,7 @@ import io
 import shutil
 
 
-class md2html():
+class Markdown2HTML:
 
     def __init__(self):
         self.TEMPLATE = """<!DOCTYPE html>
@@ -43,13 +43,13 @@ class md2html():
 </html>
 """
 
-    def md2html(self,md):
-        '''
+    def md2html(self, md):
+        """
         Parameters:
         md (str): the markdown text that is to be converted to HTML5
         Returns:
         docfile (file object): a file object containing the HTML5
-        '''
+        """
         extensions = ['extra', 'smarty']
         html = markdown.markdown(md, extensions=extensions, output_format='html5')
         doc = jinja2.Template(self.TEMPLATE).render(content=html)
@@ -64,7 +64,11 @@ if __name__ == "__main__":
 * Reformatted all files to match uniform serialization.
 * Corrected restriction for `gist:Collection`
 * Provided missing labels for classes and properties.
-* Corrected issues [72](https://github.com/semanticarts/gist/issues/72), [91](https://github.com/semanticarts/gist/issues/91), [95](https://github.com/semanticarts/gist/issues/95), [96](https://github.com/semanticarts/gist/issues/96), [97](https://github.com/semanticarts/gist/issues/97), [98](https://github.com/semanticarts/gist/issues/98), [101](https://github.com/semanticarts/gist/issues/101), [122](https://github.com/semanticarts/gist/issues/122), and [145](https://github.com/semanticarts/gist/issues/145).
+* Corrected issues [72](https://github.com/semanticarts/gist/issues/72),
+  [91](https://github.com/semanticarts/gist/issues/91), [95](https://github.com/semanticarts/gist/issues/95),
+  [96](https://github.com/semanticarts/gist/issues/96), [97](https://github.com/semanticarts/gist/issues/97),
+  [98](https://github.com/semanticarts/gist/issues/98), [101](https://github.com/semanticarts/gist/issues/101),
+  [122](https://github.com/semanticarts/gist/issues/122), and [145](https://github.com/semanticarts/gist/issues/145).
 * Removed outdated Visio and PDF files, documentation is now auto-generated as part of the release process.
 * gistWiki has been removed.
 
@@ -76,17 +80,14 @@ Release notes gist 9.0.0
 *	The `gist` namespace has been modfied from `http:` to `https:`.
 *	Added comments to ontologies.
 *	Added labels and comments to many properties and classes.
-*	`SocialBeing` has been removed.  
+*	`SocialBeing` has been removed.
 *	The property `gist:party` has been renamed to `gist:hasParty`.
 
 Import URL: http://ontologies.semanticarts.com/o/gistCore9.0.0
 """
-    conv = md2html()
+    conv = Markdown2HTML()
     outLocation = "./outFile.html"
     f = conv.md2html(test)
-    with open (outLocation, 'w') as fd:
-        f.seek (0)
-        shutil.copyfileobj (f, fd)
-
-
-        
+    with open(outLocation, 'w') as fd:
+        f.seek(0)
+        shutil.copyfileobj(f, fd)

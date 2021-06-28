@@ -153,7 +153,7 @@ class OntoGraf:
         prefix xsd: <http://www.w3.org/2001/XMLSchema#>
         prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         prefix gist: <https://ontologies.semanticarts.com/gist/>
-        
+
         select ?ontology ?entity ?type where {
           ?ontology a owl:Ontology .
           {
@@ -335,25 +335,7 @@ class OntoGraf:
             for usage in predicate_usage:
                 if 'src' not in usage or int(usage.get('num', 0)) < self.threshold:
                     continue
-                if usage['src'] not in self.node_data:
-                    src = {
-                        'label': usage.get('srcLabel'),
-                        'links': {},
-                        'data': {}
-                    }
-                    self.node_data[usage['src']] = src
-                else:
-                    src = self.node_data[usage['src']]
-                if usage.get('dt'):
-                    src['data'][(predicate, predicate_str, self.strip_uri(usage['dt']))] = int(usage['num'])
-                else:
-                    if usage['tgt'] not in self.node_data:
-                        self.node_data[usage['tgt']] = {
-                            'label': usage.get('tgtLabel'),
-                            'links': {},
-                            'data': {}
-                        }
-                    src['links'][(predicate, predicate_str, usage['tgt'])] = int(usage['num'])
+                self.record_predicate_usage(predicate, predicate_str, usage)
 
             logging.debug("Fetching %s took %d seconds", str(predicate_row), perf_counter() - pre_time)
 
@@ -361,6 +343,7 @@ class OntoGraf:
             self.print_progress_bar(len(all_predicates), len(all_predicates),
                                     prefix='Processing predicates:', suffix='Complete', length=50)
 
+        # This is for future functionality
         inheritance_query = """
         prefix owl: <http://www.w3.org/2002/07/owl#>
         prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -377,13 +360,37 @@ class OntoGraf:
           }
           filter (!isblank(?class) && !isblank(?parent))
         }
-        """
+        """  # noqa: F841
         # for inheritance_info in self.select_query(inheritance_query):
         #     self.superclasses[inheritance_info['class']].append(inheritance_info['parent'])
         # TODO Coalesce parent and child class references?
 
         if self.show_shacl:
-            shacl_query = """
+            self.add_shacl_coloring()
+
+    def record_predicate_usage(self, predicate, predicate_str, usage):
+        if usage['src'] not in self.node_data:
+            src = {
+                'label': usage.get('srcLabel'),
+                'links': {},
+                'data': {}
+            }
+            self.node_data[usage['src']] = src
+        else:
+            src = self.node_data[usage['src']]
+        if usage.get('dt'):
+            src['data'][(predicate, predicate_str, self.strip_uri(usage['dt']))] = int(usage['num'])
+        else:
+            if usage['tgt'] not in self.node_data:
+                self.node_data[usage['tgt']] = {
+                    'label': usage.get('tgtLabel'),
+                    'links': {},
+                    'data': {}
+                }
+            src['links'][(predicate, predicate_str, usage['tgt'])] = int(usage['num'])
+
+    def add_shacl_coloring(self):
+        shacl_query = """
             prefix sh: <http://www.w3.org/ns/shacl#>
 
             select distinct ?class ?property where {
@@ -393,8 +400,8 @@ class OntoGraf:
               { ?shape (sh:and|sh:or|sh:xone|sh:not|rdf:first|rdf:rest)+/sh:path ?property }
             }
             """
-            for row in self.select_query(shacl_query):
-                self.shapes[row['class']].append(row['property'])
+        for row in self.select_query(shacl_query):
+            self.shapes[row['class']].append(row['property'])
 
     def create_predicate_query(self, predicate, predicate_type, limit):
         if predicate_type == str(OWL.ObjectProperty):

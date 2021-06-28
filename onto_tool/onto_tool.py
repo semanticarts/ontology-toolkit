@@ -15,14 +15,14 @@ import json
 import yaml
 import csv
 from jsonschema import validate
-from typing import Tuple
+from typing import Tuple, List
 from rdflib import Graph, ConjunctiveGraph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD, Namespace
 from rdflib.util import guess_format
 from rdflib.plugins.sparql import prepareQuery
 import pyshacl
 from .ontograph import OntoGraf
-from .mdutils import md2html
+from .mdutils import Markdown2HTML
 
 # f-strings are fine in log messages
 # pylint: disable=W1202
@@ -206,12 +206,12 @@ def configure_arg_parser():
                                      " complex logical shapes or Advanced SHACL features such as SPARQL queries.")
     sampling_limits = graphic_parser.add_argument_group(title='Sampling Limits')
     sampling_limits.add_argument("--instance-limit", type=int, default=500000,
-                                help="Specify a limit on how many triples to consider that use any one"
-                                     " predicate to find (default 500000). This option may result in an"
-                                     " incomplete version of the diagram, missing certain links.")
+                                 help="Specify a limit on how many triples to consider that use any one"
+                                      " predicate to find (default 500000). This option may result in an"
+                                      " incomplete version of the diagram, missing certain links.")
     sampling_limits.add_argument("--predicate-threshold", type=int, default=10,
-                                help="Ignore predicates which occur fewer than PREDICATE_THRESHOLD times"
-                                     " (default 10)")
+                                 help="Ignore predicates which occur fewer than PREDICATE_THRESHOLD times"
+                                      " (default 10)")
     graph_filters = graphic_parser.add_argument_group(title="Filters (only one can be used)")
     scope_control = graph_filters.add_mutually_exclusive_group()
     scope_control.add_argument("--include", nargs="*", default=[],
@@ -297,6 +297,7 @@ def set_version_info(g, ontology, version_info):
 
     If versionInfo is not provided, extracts ontology version from versionIRI.
     """
+    version_info = version_info if version_info != 'auto' else None
     pattern = re.compile('^(.*?)(\\d+\\.\\d+\\.\\d+)?$')
     version_iri = next(g.objects(ontology, OWL.versionIRI), None)
     version = pattern.match(str(version_iri)).group(2) if version_iri else None
@@ -634,6 +635,17 @@ class VarDict(dict):
         return template.format(**self)
 
 
+BUNDLE_ACTIONS = dict()
+
+
+def register(name):
+    """Register a function as a bundle action"""
+    def pass_through(func):
+        BUNDLE_ACTIONS[name] = func
+        return func
+    return pass_through
+
+
 def __bundle_file_list(action, variables, ignore_target=False):
     """
     Expand a source/target/includes spec into a list of inputFile/outputFile pairs.
@@ -766,6 +778,7 @@ def __bundle_transform__(action, tools, variables):
         raise Exception('Unsupported tool type ', tool['type'])
 
 
+@register(name="definedBy")
 def __bundle_defined_by__(action, variables):
     logging.debug('Add definedBy %s', action)
     for in_out in __bundle_file_list(action, variables):
@@ -793,6 +806,7 @@ def __bundle_defined_by__(action, variables):
                                      action['replace']['to'].format(**variables))
 
 
+@register(name="copy")
 def __bundle_copy__(action, variables):
     logging.debug('Copy %s', action)
     for in_out in __bundle_file_list(action, variables):
@@ -804,6 +818,7 @@ def __bundle_copy__(action, variables):
                                          action['replace']['to'].format(**variables))
 
 
+@register(name="move")
 def __bundle_move__(action, variables):
     logging.debug('Move %s', action)
     for in_out in __bundle_file_list(action, variables):
@@ -815,9 +830,10 @@ def __bundle_move__(action, variables):
                                          action['replace']['to'].format(**variables))
 
 
+@register(name="markdown")
 def __bundle_markdown__(action, variables):
     logging.debug('Markdown %s', action)
-    conv = md2html()
+    conv = Markdown2HTML()
     filepath_in = action['source'].format(**variables)
     filepath_out = action['target'].format(**variables)
     md = open(filepath_in).read()
@@ -827,6 +843,7 @@ def __bundle_markdown__(action, variables):
         shutil.copyfileobj(converted_md, fd, -1)
 
 
+@register(name="graph")
 def __bundle_graph__(action, variables):
     logging.debug('Graph %s', action)
     documentation = action['target'].format(**variables)
@@ -841,6 +858,7 @@ def __bundle_graph__(action, variables):
     og.create_schema_graf()
 
 
+@register(name="sparql")
 def __bundle_sparql__(action, variables):
     logging.debug('SPARQL %s', action)
     output = action['target'].format(**variables)
@@ -890,6 +908,7 @@ def __build_graph_from_inputs__(action, variables):
     return g
 
 
+@register(name="verify")
 def __bundle_verify__(action, variables):
     logging.debug('Verify %s', action)
     if action['type'] == 'select':
@@ -961,41 +980,50 @@ def __verify_construct__(action, variables):
             parsed_query,
             initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
 
-        if results.graph is not None:
-            if len(results.graph):
-                results.graph.bind("skos", SKOS)
-                results.graph.bind("sh", Namespace('http://www.w3.org/ns/shacl#'))
-                serialized, count, violation = __format_validation_results__(results.graph)
-                if not count:
-                    logging.warning("CONSTRUCT verification %s did not produce well-formed ViolationReport",
-                                    query_text[0])
-                else:
-                    if violation or fail_on_warning:
-                        logging.error("Verification query %s produced non-empty results:\n%s",
-                                      query_text[0], serialized)
-                    else:
-                        logging.warning("Verification query %s produced non-empty results:\n%s",
-                                        query_text[0], serialized)
-                if 'target' in action:
-                    if not stop_on_fail:
-                        # Treat 'target' as directory.
-                        target_dir = action['target'].format(**variables)
-                        if not isdir(target_dir):
-                            os.mkdir(target_dir)
-                        base, _ = splitext(basename(query_text[0]))
-                        construct_output = join(target_dir, base + '.ttl')
-                    else:
-                        construct_output = action['target'].format(**variables)
-                    results.graph.serialize(construct_output, format='turtle', encoding='utf-8')
-                if fail_on_warning or violation:
-                    fail_count += 1
-                    if stop_on_fail:
-                        break
+        if results.graph is not None and len(results.graph):
+            violation = __process_construct_validation__(output=action.get('target'),
+                                                         fail_on_warning=fail_on_warning,
+                                                         stop_on_fail=stop_on_fail,
+                                                         query_file=query_text[0],
+                                                         graph=results.graph,
+                                                         variables=variables)
+            if fail_on_warning or violation:
+                fail_count += 1
+                if stop_on_fail:
+                    break
         else:
-            raise Exception(f'Invalid query for SELECT verify: {query_text}')
+            raise Exception(f'Invalid query for CONSTRUCT verify: {query_text}')
 
     if fail_count > 0:
         exit(1)
+
+
+def __process_construct_validation__(output, fail_on_warning, stop_on_fail, query_file, graph, variables):
+    graph.bind("skos", SKOS)
+    graph.bind("sh", Namespace('http://www.w3.org/ns/shacl#'))
+    serialized, count, violation = __format_validation_results__(graph)
+    if not count:
+        logging.warning("CONSTRUCT verification %s did not produce well-formed ViolationReport",
+                        query_file)
+    else:
+        if violation or fail_on_warning:
+            logging.error("Verification query %s produced non-empty results:\n%s",
+                          query_file, serialized)
+        else:
+            logging.warning("Verification query %s produced non-empty results:\n%s",
+                            query_file, serialized)
+    if output:
+        if not stop_on_fail:
+            # Treat 'target' as directory.
+            target_dir = output.format(**variables)
+            if not isdir(target_dir):
+                os.mkdir(target_dir)
+            base, _ = splitext(basename(query_file))
+            construct_output = join(target_dir, base + '.ttl')
+        else:
+            construct_output = output.format(**variables)
+        graph.serialize(construct_output, format='turtle', encoding='utf-8')
+    return violation
 
 
 def __verify_shacl__(action, variables):
@@ -1108,7 +1136,8 @@ def __verify_ask__(action, variables):
         exit(1)
 
 
-def __build_query_list__(action, variables):
+def __build_query_list__(action: dict, variables: dict) -> List[Tuple]:
+    """Expands the query specification into list of (file name, query text) tuples."""
     if 'query' in action:
         query = action['query'].format(**variables)
         if isfile(query):
@@ -1136,6 +1165,7 @@ def __boolean_option__(action, key, variables, default=False):
     return str(value.format(**variables)).lower() in ("yes", "true", "t", "1")
 
 
+@register(name="export")
 def __bundle_export__(action, variables):
     logging.debug('Export %s', action)
     if __boolean_option__(action, 'compress', variables):
@@ -1215,22 +1245,8 @@ def bundle_ontology(command_line_variables, bundle_path):
             path = action['directory'].format(**substituted)
             if not isdir(path):
                 os.mkdir(path)
-        elif action['action'] == 'copy':
-            __bundle_copy__(action, substituted)
-        elif action['action'] == 'move':
-            __bundle_move__(action, substituted)
-        elif action['action'] == 'markdown':
-            __bundle_markdown__(action, substituted)
-        elif action['action'] == 'graph':
-            __bundle_graph__(action, substituted)
-        elif action['action'] == 'definedBy':
-            __bundle_defined_by__(action, substituted)
-        elif action['action'] == 'export':
-            __bundle_export__(action, substituted)
-        elif action['action'] == 'sparql':
-            __bundle_sparql__(action, substituted)
-        elif action['action'] == 'verify':
-            __bundle_verify__(action, substituted)
+        elif action['action'] in BUNDLE_ACTIONS:
+            BUNDLE_ACTIONS[action['action']](action, substituted)
         else:
             raise Exception('Unknown action ' + str(action))
 
@@ -1273,12 +1289,8 @@ def update_ontology(args, output_format):
         if 'set_version' in args and args.set_version:
             set_version(g, ontology, ontology_iri, args.set_version)
         if 'version_info' in args and args.version_info:
-            version_info = args.version_info
-            if version_info == 'auto':
-                # Not specified, generate automatically
-                version_info = None
             try:
-                set_version_info(g, ontology, version_info)
+                set_version_info(g, ontology, args.version_info)
             except Exception as e:
                 logging.error(e)
                 continue
@@ -1297,15 +1309,19 @@ def update_ontology(args, output_format):
         if 'strip_versions' in args and args.strip_versions:
             strip_versions(g, ontology)
 
-        # Output
-        if args.in_place:
-            adjusted_format = 'pretty-xml' if orig_format == 'xml' else orig_format
-            g.serialize(destination=onto_file,
-                        format=adjusted_format,
-                        encoding='utf-8')
-        else:
-            serialized = g.serialize(format=output_format)
-            args.output.write(serialized.decode(args.output.encoding))
+        output_updated_ontology(args, g, onto_file, orig_format, output_format)
+
+
+def output_updated_ontology(args, g, onto_file, orig_format, output_format):
+    # Output
+    if args.in_place:
+        adjusted_format = 'pretty-xml' if orig_format == 'xml' else orig_format
+        g.serialize(destination=onto_file,
+                    format=adjusted_format,
+                    encoding='utf-8')
+    else:
+        serialized = g.serialize(format=output_format)
+        args.output.write(serialized.decode(args.output.encoding))
 
 
 def main(arguments):
