@@ -8,3 +8,6 @@ __pycache__/
 # Spyder projects
 .spyproject/
 
+.coverage
+.idea/
+dist/

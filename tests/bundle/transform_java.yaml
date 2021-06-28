@@ -1,0 +1,33 @@
+bundle: test
+variables:
+  input: "tests/bundle"
+  output: "tests/bundle"
+  rdf-toolkit: "tests/rdf-toolkit.jar"
+  format: "unknown"
+tools:
+- name: "serializer"
+  type: "Java"
+  jar: "{rdf-toolkit}"
+  arguments:
+    - "-sfmt"
+    - "turtle"
+    - "-tfmt"
+    - "{format}"
+    - "-sdt"
+    - "explicit"
+    - "-dtd"
+    - "-ibn"
+    - "-s"
+    - "{inputFile}"
+    - "-t"
+    - "{outputFile}"
+actions:
+  - action: 'transform'
+    tool: 'serializer'
+    source: '{input}'
+    includes:
+      - 'transform_sparql_data.ttl'
+    rename:
+      from: "(.*)\\.ttl"
+      to: "\\g<1>.xml"
+    target: '{output}'

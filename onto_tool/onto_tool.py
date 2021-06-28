@@ -695,28 +695,18 @@ def __bundle_file_list(action, variables, ignore_target=False):
                    outputFile=None if ignore_target else action['target'].format(**variables))
 
 
-def __bundle_transform__(action, tools, variables):
-    logging.debug('Transform %s', action)
-    tool = next((t for t in tools if t['name'] == action['tool']), None)
-    if not tool:
-        raise Exception('Missing tool ', action['tool'])
-    if tool['type'] == 'Java':
-        __bundle_transform_java__(action, tool, variables)
-    elif tool['type'] == 'sparql':
-        __bundle_transform_sparql__(action, tool, variables)
-    else:
-        raise Exception('Unsupported tool type ', tool['type'])
-
-
-def __bundle_transform_java__(action, tool, variables):
+def __bundle_transform_shell__(action, arguments, variables):
     for in_out in __bundle_file_list(action, variables):
         invocation_vars = VarDict()
         invocation_vars.update(variables)
         invocation_vars.update(in_out)
-        interpreted_args = ["java", "-jar", tool['jar'].format(**invocation_vars)] + [
-            arg.format(**invocation_vars) for arg in tool['arguments']]
+        interpreted_args = [arg.format(**invocation_vars) for arg in arguments]
         logging.debug('Running %s', interpreted_args)
         status = subprocess.run(interpreted_args, capture_output=True)
+        if status.stdout:
+            logging.debug('stdout for %s is %s', action, status.stdout)
+        if status.stderr:
+            logging.debug('stderr for %s is %s', action, status.stderr)
         if status.returncode != 0:
             logging.error("Tool %s exited with %d: %s", interpreted_args, status.returncode, status.stderr)
             exit(1)
@@ -759,6 +749,21 @@ def __bundle_transform_sparql__(action, tool, variables):
             replace_patterns_in_file(in_out['outputFile'],
                                      action['replace']['from'].format(**variables),
                                      action['replace']['to'].format(**variables))
+
+
+def __bundle_transform__(action, tools, variables):
+    logging.debug('Transform %s', action)
+    tool = next((t for t in tools if t['name'] == action['tool']), None)
+    if not tool:
+        raise Exception('Missing tool ', action['tool'])
+    if tool['type'] == 'Java':
+        __bundle_transform_shell__(action, ["java", "-jar", tool['jar']] + tool['arguments'], variables)
+    elif tool['type'] == 'shell':
+        __bundle_transform_shell__(action, tool['arguments'], variables)
+    elif tool['type'] == 'sparql':
+        __bundle_transform_sparql__(action, tool, variables)
+    else:
+        raise Exception('Unsupported tool type ', tool['type'])
 
 
 def __bundle_defined_by__(action, variables):

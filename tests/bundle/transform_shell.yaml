@@ -1,0 +1,15 @@
+bundle: test
+variables:
+  input: "tests/bundle"
+  output: "tests/bundle"
+tools:
+- name: "java_version"
+  type: "shell"
+  arguments:
+    - "java"
+    - "-version"
+actions:
+  - action: 'transform'
+    tool: 'java_version'
+    source: '{input}/transform_sparql_data.ttl'
+    target: '{output}'

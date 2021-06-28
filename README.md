@@ -228,7 +228,7 @@ Values can reference other values using the `{name}` template syntax.
 
 #### Tool definition
 
-All tools require a `name` by which they are referenced in `transform` actions. Two different tool types are supported:
+All tools require a `name` by which they are referenced in `transform` actions. Three different tool types are supported:
 * Java tools (`type: "Java"`) require a path to the executable Jar file specified via the `jar` option,
   and a list of `arguments` that will be applied to each file processed.
   The `inputFile` and `outputFile` variables will be bound during execution, but other variables can be
@@ -249,6 +249,19 @@ All tools require a `name` by which they are referenced in `transform` actions. 
       - "{inputFile}"
       - "-t"
       - "{outputFile}"
+  ```
+* Shell tools (`type: "shell"`) execute a command specified via
+  a list of `arguments` that will be applied to each file processed.
+  The `inputFile` and `outputFile` variables will be bound during execution, but other variables can be
+  used to construct the arguments.
+  tools:
+  ```yaml
+    tools:
+    - name: "java_version"
+      type: "shell"
+      arguments:
+        - "java"
+        - "-version"
   ```
 * SPARQL tools apply a SPARQL Update query to each input file and serialize the resulting graph into the 
   output file. RDF format is preserved unless overridden with the `format` option. If the query is specified
