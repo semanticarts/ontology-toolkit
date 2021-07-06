@@ -1,4 +1,5 @@
 import logging
+import re
 from onto_tool import onto_tool
 from rdflib import Graph
 from rdflib.namespace import SKOS, RDF
@@ -34,4 +35,4 @@ def test_transform_shell(caplog):
         ])
 
     output = caplog.messages
-    assert any('java version ' in message for message in output)
+    assert any(re.search(r'(java|openjdk) version ', message) for message in output)

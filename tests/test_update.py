@@ -43,5 +43,3 @@ def test_update_dependency(capsys):
         [(URIRef('https://data.clientX.com/d/ontoName'),
           URIRef('https://data.clientX.com/d/coreOntology2.0.0'))]
     )
-
-
