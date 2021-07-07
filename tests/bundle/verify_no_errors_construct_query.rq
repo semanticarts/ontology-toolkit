@@ -1,0 +1,17 @@
+prefix skos: <http://www.w3.org/2004/02/skos/core#>
+prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+prefix sh: <http://www.w3.org/ns/shacl#>
+CONSTRUCT {
+    ?report a sh:ValidationReport ;
+        sh:conforms false ;
+        sh:result [ a sh:ValidationResult ;
+                sh:focusNode ?focus ;
+                sh:resultMessage "Undefined domain class" ;
+                sh:resultPath rdfs:domain ;
+                sh:resultSeverity sh:Violation ;
+                sh:value ?domain ] .
+}
+WHERE {
+  ?focus <https://nonexistentproperty.com> ?value .
+  bind(BNODE() as ?report)
+}
