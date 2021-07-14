@@ -1,5 +1,6 @@
 from onto_tool import onto_tool
 import csv
+from os.path import isfile
 from pytest import raises
 import re
 from rdflib import Graph
@@ -89,6 +90,9 @@ def test_verify_construct(caplog):
     sh = Namespace('http://www.w3.org/ns/shacl#')
     errors = [validation_graph.subjects(RDF.type, sh.ValidationResult)]
     assert len(errors) == 1
+
+    # Should handle a query that generates no errors
+    assert not isfile('test/bundle/verify_construct_results/verify_no_errors_construct_query.ttl')
 
 
 def test_verify_shacl(caplog):

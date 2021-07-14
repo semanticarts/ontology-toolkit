@@ -757,7 +757,12 @@ def __verify_construct__(action, variables):
             parsed_query,
             initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
 
-        if results.graph is not None and len(results.graph):
+        if results.graph is not None:
+            if not len(results.graph):
+                continue
+
+            for pref, ns in parsed_query.prologue.namespace_manager.namespaces():
+                results.graph.bind(pref, ns)
             violation = __process_construct_validation__(output=action.get('target'),
                                                          fail_on_warning=fail_on_warning,
                                                          stop_on_fail=stop_on_fail,
