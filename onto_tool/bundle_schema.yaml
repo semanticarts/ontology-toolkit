@@ -63,6 +63,20 @@ definitions:
               - source
         required:
           - queries
+  endpoint_spec:
+    type: object
+    properties:
+      query_uri:
+        $ref: '#/definitions/non_empty_string'
+      update_uri:
+        $ref: '#/definitions/non_empty_string'
+      user:
+        $ref: '#/definitions/non_empty_string'
+      password:
+        $ref: '#/definitions/non_empty_string'
+    required:
+      - query_uri
+    additionalProperties: false
 type: object
 required:
   - bundle
@@ -256,25 +270,38 @@ properties:
               action:
                 const: sparql
           then:
-            properties:
-              source:
-                $ref: '#/definitions/non_empty_string'
-              target:
-                $ref: '#/definitions/non_empty_string'
-              includes:
-                $ref: '#/definitions/include_list'
-              query:
-                $ref: '#/definitions/non_empty_string'
-              format:
-                type: string
-                enum:
-                  - turtle
-                  - xml
-                  - nt
-            required:
-              - query
-              - source
-              - target
+            oneOf:
+              - allOf:
+                - $ref: '#/definitions/multi_query_spec'
+                - properties:
+                    source:
+                      $ref: '#/definitions/non_empty_string'
+                    target:
+                      $ref: '#/definitions/non_empty_string'
+                    includes:
+                      $ref: '#/definitions/include_list'
+                    format:
+                      type: string
+                      enum:
+                        - turtle
+                        - xml
+                        - nt
+                  required:
+                    - source
+                    - target
+              - allOf:
+                - $ref: '#/definitions/multi_query_spec'
+                - properties:
+                    endpoint:
+                      $ref: '#/definitions/endpoint_spec'
+                    format:
+                      type: string
+                      enum:
+                        - turtle
+                        - xml
+                        - nt
+                  required:
+                    - endpoint
         - if:
             properties:
               action:
