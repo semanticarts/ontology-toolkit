@@ -178,10 +178,6 @@ properties:
                 const: verify
           then:
             properties:
-              source:
-                $ref: '#/definitions/non_empty_string'
-              includes:
-                $ref: '#/definitions/include_list'
               type:
                 type: string
                 enum:
@@ -198,12 +194,17 @@ properties:
                   allOf:
                     - $ref: '#/definitions/multi_query_spec'
                     - properties:
+                        source:
+                          $ref: '#/definitions/non_empty_string'
+                        includes:
+                          $ref: '#/definitions/include_list'
                         stopOnFail:
                           type: boolean
                         expected:
                           type: boolean
                       required:
                         - expected
+                        - source
               - if:
                   properties:
                     type:
@@ -214,31 +215,77 @@ properties:
                     - properties:
                         stopOnFail:
                           type: boolean
+                        source:
+                          $ref: '#/definitions/non_empty_string'
+                        includes:
+                          $ref: '#/definitions/include_list'
                         target:
                           $ref: '#/definitions/non_empty_string'
+                      required:
+                        - source
               - if:
                   properties:
                     type:
                       const: construct
                 then:
-                  allOf:
-                    - $ref: '#/definitions/multi_query_spec'
-                    - properties:
-                        stopOnFail:
-                          type: boolean
-                        failOn:
-                          type: string
-                          enum:
-                            - "warning"
-                            - "violation"
-                        target:
-                          $ref: '#/definitions/non_empty_string'
+                  oneOf:
+                    - allOf:
+                      - $ref: '#/definitions/multi_query_spec'
+                      - properties:
+                          source:
+                            $ref: '#/definitions/non_empty_string'
+                          target:
+                            $ref: '#/definitions/non_empty_string'
+                          includes:
+                            $ref: '#/definitions/include_list'
+                          format:
+                            type: string
+                            enum:
+                              - turtle
+                              - xml
+                              - nt
+                          stopOnFail:
+                            type: boolean
+                          failOn:
+                            type: string
+                            enum:
+                              - "warning"
+                              - "violation"
+                        required:
+                          - source
+                          - target
+                    - allOf:
+                      - $ref: '#/definitions/multi_query_spec'
+                      - properties:
+                          endpoint:
+                            $ref: '#/definitions/endpoint_spec'
+                          format:
+                            type: string
+                            enum:
+                              - turtle
+                              - xml
+                              - nt
+                          stopOnFail:
+                            type: boolean
+                          failOn:
+                            type: string
+                            enum:
+                              - "warning"
+                              - "violation"
+                          target:
+                            $ref: '#/definitions/non_empty_string'
+                        required:
+                          - endpoint
               - if:
                   properties:
                     type:
                       const: shacl
                 then:
                   properties:
+                    source:
+                      $ref: '#/definitions/non_empty_string'
+                    includes:
+                      $ref: '#/definitions/include_list'
                     target:
                       $ref: '#/definitions/non_empty_string'
                     inference:
@@ -261,10 +308,10 @@ properties:
                         includes:
                           $ref: '#/definitions/include_list'
                   required:
+                    - source
                     - shapes
             required:
               - type
-              - source
         - if:
             properties:
               action:

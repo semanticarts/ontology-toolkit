@@ -1,0 +1,18 @@
+prefix skos: <http://www.w3.org/2004/02/skos/core#>
+prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+prefix sh: <http://www.w3.org/ns/shacl#>
+prefix : <http://example.com/>
+
+CONSTRUCT {
+    ?report a sh:ValidationReport ;
+        sh:conforms false ;
+        sh:result [ a sh:ValidationResult ;
+                sh:focusNode :fails ;
+                sh:resultMessage "Fake Violation Report" ;
+                sh:resultPath :fake_property ;
+                sh:resultSeverity sh:Violation ;
+                sh:value :fake_value ] .
+}
+WHERE {
+  bind(BNODE() as ?report)
+}

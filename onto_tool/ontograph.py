@@ -19,10 +19,12 @@ from time import perf_counter
 from urllib.parse import urlparse, urlunparse
 
 import pydot
-from SPARQLWrapper import SPARQLWrapper, POST, BASIC, JSON
+from SPARQLWrapper import JSON
 from rdflib import Graph, BNode
 from rdflib.namespace import RDF, OWL
 from rdflib.util import guess_format
+
+from .sparql_utils import create_endpoint
 
 
 # Ignore \l - uses them as a line separator
@@ -85,16 +87,7 @@ class OntoGraf:
         logging.debug(f"Query against {self.repo}")
         logging.debug(f"Query\n {query}")
 
-        repo_url = urlparse(self.repo)
-
-        sparql = SPARQLWrapper(urlunparse((repo_url.scheme,
-                                           re.sub('^.*@', '', repo_url.netloc),
-                                           repo_url.path,
-                                           '', '', '')))
-
-        sparql.setHTTPAuth(BASIC)
-        sparql.setCredentials(repo_url.username, repo_url.password)
-        sparql.setMethod(POST)
+        sparql = create_endpoint(self.repo)
 
         sparql.setQuery(query)
         sparql.setReturnFormat(JSON)

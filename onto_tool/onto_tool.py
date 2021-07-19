@@ -18,10 +18,12 @@ from rdflib import Graph, ConjunctiveGraph, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL, SKOS, XSD, Namespace
 from rdflib.util import guess_format
 from rdflib.plugins.sparql import prepareQuery
+from SPARQLWrapper import TURTLE
 import pyshacl
 from .command_line import configure_arg_parser
 from .ontograph import OntoGraf
 from .mdutils import Markdown2HTML
+from .sparql_utils import create_endpoint
 
 # f-strings are fine in log messages
 # pylint: disable=W1202
@@ -512,10 +514,7 @@ def __bundle_transform_sparql__(action, tool, variables):
     else:
         query_text = query
 
-    from rdflib.plugins.sparql.parser import parseUpdate
-    from rdflib.plugins.sparql.algebra import translateUpdate
-
-    parsed_query = translateUpdate(parseUpdate(query_text))
+    parsed_query = __parse_update_query__(query_text)
 
     for in_out in __bundle_file_list(action, variables):
         g = Graph()
@@ -538,6 +537,13 @@ def __bundle_transform_sparql__(action, tool, variables):
             replace_patterns_in_file(in_out['outputFile'],
                                      action['replace']['from'].format(**variables),
                                      action['replace']['to'].format(**variables))
+
+
+def __parse_update_query__(query_text):
+    from rdflib.plugins.sparql.parser import parseUpdate
+    from rdflib.plugins.sparql.algebra import translateUpdate
+    parsed_query = translateUpdate(parseUpdate(query_text))
+    return parsed_query
 
 
 def __bundle_transform__(action, tools, variables):
@@ -639,15 +645,17 @@ def __bundle_graph__(action, variables):
 def __bundle_sparql__(action, variables):
     logging.debug('SPARQL %s', action)
     output = action['target'].format(**variables)
-    query = action['query'].format(**variables)
-    if isfile(query):
-        query_text = open(query, 'r').read()
-    else:
-        query_text = query
+    if 'query' in action:
+        query = action['query'].format(**variables)
+        if isfile(query):
+            query_text = open(query, 'r').read()
+        else:
+            query_text = query
 
     g = __build_graph_from_inputs__(action, variables)
 
     parsed_query = prepareQuery(query_text)
+    # parsed_query.algebra.name will be SelectQuery, ConstructQuery or AskQuery
     results = g.query(
         parsed_query,
         initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
@@ -742,32 +750,49 @@ def __verify_select__(action, variables):
         exit(1)
 
 
+def __endpoint_construct_query__(endpoint: dict, query_text: str) -> Graph:
+    sparql = create_endpoint(endpoint['query_uri'], endpoint.get('user'), endpoint.get('password'))
+
+    sparql.setQuery(query_text)
+    sparql.setReturnFormat(TURTLE)
+    results = sparql.query().convert()
+    rg = Graph()
+    rg.parse(data=results.decode("utf-8"), format="turtle")
+    return rg
+
+
 def __verify_construct__(action, variables):
     queries = __build_query_list__(action, variables)
 
-    g = __build_graph_from_inputs__(action, variables)
+    g = None
+    if 'endpoint' not in action:
+        g = __build_graph_from_inputs__(action, variables)
 
     fail_count = 0
     stop_on_fail = __boolean_option__(action, 'stopOnFail', variables, default=True)
     fail_on_warning = 'failOn' in action and action['failOn'] == 'warning'
-    for query_text in queries:
-        logging.debug("Executing CONSTRUCT query %s", query_text[0])
-        parsed_query = prepareQuery(query_text[1])
-        results = g.query(
-            parsed_query,
-            initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+    for query_file, query_text in queries:
+        logging.debug("Executing CONSTRUCT query %s", query_file)
+        parsed_query = prepareQuery(query_text)
+        if 'endpoint' in action:
+            results = __endpoint_construct_query__(action['endpoint'], query_text)
+        else:
+            qr = g.query(
+                parsed_query,
+                initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+            results = qr.graph
 
-        if results.graph is not None:
-            if not len(results.graph):
+        if results is not None and isinstance(results, Graph):
+            if not len(results):
                 continue
 
             for pref, ns in parsed_query.prologue.namespace_manager.namespaces():
-                results.graph.bind(pref, ns)
+                results.bind(pref, ns)
             violation = __process_construct_validation__(output=action.get('target'),
                                                          fail_on_warning=fail_on_warning,
                                                          stop_on_fail=stop_on_fail,
-                                                         query_file=query_text[0],
-                                                         graph=results.graph,
+                                                         query_file=query_file,
+                                                         graph=results,
                                                          variables=variables)
             if fail_on_warning or violation:
                 fail_count += 1
