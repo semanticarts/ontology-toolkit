@@ -21,3 +21,4 @@ actions:
     source: '{output}/sparql.ttl'
     target: '{output}/sparql.csv'
     query: '{input}/bundle/test_sparql.rq'
+

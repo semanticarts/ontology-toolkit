@@ -24,7 +24,7 @@ from rdflib import Graph, BNode
 from rdflib.namespace import RDF, OWL
 from rdflib.util import guess_format
 
-from .sparql_utils import create_endpoint
+from .sparql_utils import create_endpoint, select_query
 
 
 # Ignore \l - uses them as a line separator
@@ -88,16 +88,7 @@ class OntoGraf:
         logging.debug(f"Query\n {query}")
 
         sparql = create_endpoint(self.repo)
-
-        sparql.setQuery(query)
-        sparql.setReturnFormat(JSON)
-        results = sparql.query().convert()
-
-        for result in results["results"]["bindings"]:
-            yield dict(
-                (v, result[v]["value"])
-                for v in results["head"]["vars"] if v in result
-            )
+        return select_query(sparql, query)
 
     @staticmethod
     def strip_uri(uri):

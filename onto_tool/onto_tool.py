@@ -20,10 +20,11 @@ from rdflib.util import guess_format
 from rdflib.plugins.sparql import prepareQuery
 from SPARQLWrapper import TURTLE
 import pyshacl
+from pyparsing import ParseException
 from .command_line import configure_arg_parser
 from .ontograph import OntoGraf
 from .mdutils import Markdown2HTML
-from .sparql_utils import create_endpoint
+from .sparql_utils import create_endpoint, select_query_csv
 
 # f-strings are fine in log messages
 # pylint: disable=W1202
@@ -641,40 +642,109 @@ def __bundle_graph__(action, variables):
     og.create_schema_graf()
 
 
-@register(name="sparql")
-def __bundle_sparql__(action, variables):
-    logging.debug('SPARQL %s', action)
-    output = action['target'].format(**variables)
-    if 'query' in action:
-        query = action['query'].format(**variables)
-        if isfile(query):
-            query_text = open(query, 'r').read()
-        else:
-            query_text = query
-
+def __bundle_local_sparql__(action, variables, output, queries):
     g = __build_graph_from_inputs__(action, variables)
+    updated = False
+    for query_file, query_text in queries:
+        parsed_update = None
+        parsed_query = None
+        try:
+            parsed_update = __parse_update_query__(query_text)
+        except ParseException as pe:
+            # Not a update
+            parsed_query = prepareQuery(query_text)
 
-    parsed_query = prepareQuery(query_text)
-    # parsed_query.algebra.name will be SelectQuery, ConstructQuery or AskQuery
-    results = g.query(
-        parsed_query,
-        initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+        if parsed_update:
+            g.update(parsed_update)
+            for prefix, uri in parsed_update.prologue.namespace_manager.namespaces():
+                g.bind(prefix, uri)
+            updated = True
+        else:
+            results = g.query(
+                parsed_query,
+                initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
 
-    if results.vars is not None:
-        # SELECT Query
-        with open(output, 'w') as csv_file:
-            __serialize_select_results__(csv_file, results)
-    elif results.graph is not None:
-        # CONSTRUCT Query
+            if results.vars is not None:
+                # SELECT Query
+                select_output = __determine_output_file_name__(output, queries, query_file, suffix='csv')
+                with open(select_output, 'w') as csv_file:
+                    __serialize_select_results__(csv_file, results)
+
+            elif results.graph is not None:
+                # CONSTRUCT Query
+                for prefix, uri in parsed_query.prologue.namespace_manager.namespaces():
+                    results.graph.bind(prefix, uri)
+                rdf_format, suffix = __determine_format_and_suffix(action)
+                construct_output = __determine_output_file_name__(output, queries, query_file, suffix=suffix)
+                results.graph.serialize(destination=construct_output, format=rdf_format, encoding='utf-8')
+            else:
+                raise Exception('Unknown query type: ' + query_text)
+
+    if updated:
         if 'format' in action:
             rdf_format = 'pretty-xml' if action['format'] == 'xml' else action['format']
         else:
             rdf_format = 'turtle'
-        for prefix, uri in parsed_query.prologue.namespace_manager.namespaces():
-            results.graph.bind(prefix, uri)
-        results.graph.serialize(destination=output, format=rdf_format, encoding='utf-8')
+        g.serialize(destination=output, format=rdf_format, encoding='utf-8')
+
+
+def __determine_format_and_suffix(action: dict) -> tuple:
+    if 'format' in action:
+        rdf_format = 'pretty-xml' if action['format'] == 'xml' else action['format']
     else:
-        raise Exception('Unknown query type: ' + query_text)
+        rdf_format = 'turtle'
+    suffix = 'ttl' if 'format' not in action or action['format'] == 'turtle' else action['format']
+    return rdf_format, suffix
+
+
+def __determine_output_file_name__(output, queries, query_file, suffix):
+    if len(queries) == 1:
+        select_output = output
+    else:
+        base, _ = splitext(basename(query_file))
+        select_output = os.path.join(output, f'{base}.{suffix}')
+    return select_output
+
+
+def __bundle_endpoint_sparql__(action, variables, output, queries):
+    for query_file, query_text in queries:
+        parsed_update = None
+        parsed_query = None
+        try:
+            parsed_update = __parse_update_query__(query_text)
+        except ParseException as pe:
+            # Not a update
+            parsed_query = prepareQuery(query_text)
+
+        # parsed_query.algebra.name will be SelectQuery, ConstructQuery or AskQuery
+        if parsed_update:
+            __endpoint_update_query__(action['endpoint'], query_text)
+        else:
+            if parsed_query.algebra.name == 'SelectQuery':
+                select_output = __determine_output_file_name__(output, queries, query_file, suffix='csv')
+                with open(select_output, 'wb') as csv_file:
+                    csv_file.write(__endpoint_select_query__(action['endpoint'], query_text))
+            elif parsed_query.algebra.name == 'ConstructQuery':
+                results = __endpoint_construct_query__(action['endpoint'], query_text)
+                rdf_format, suffix = __determine_format_and_suffix(action)
+                for prefix, uri in parsed_query.prologue.namespace_manager.namespaces():
+                    results.bind(prefix, uri)
+                construct_output = __determine_output_file_name__(output, queries, query_file, suffix=suffix)
+                results.serialize(destination=construct_output, format=rdf_format, encoding='utf-8')
+            else:
+                raise Exception('Unknown query type: ' + query_text)
+
+
+@register(name="sparql")
+def __bundle_sparql__(action, variables):
+    logging.debug('SPARQL %s', action)
+    output = action['target'].format(**variables) if 'target' in action else None
+    queries = __build_query_list__(action, variables)
+
+    if 'endpoint' in action:
+        __bundle_endpoint_sparql__(action, variables, output, queries)
+    else:
+        __bundle_local_sparql__(action, variables, output, queries)
 
 
 def __serialize_select_results__(output, results):
@@ -759,6 +829,21 @@ def __endpoint_construct_query__(endpoint: dict, query_text: str) -> Graph:
     rg = Graph()
     rg.parse(data=results.decode("utf-8"), format="turtle")
     return rg
+
+
+def __endpoint_select_query__(endpoint: dict, query_text: str) -> bytes:
+    sparql = create_endpoint(endpoint['query_uri'], endpoint.get('user'), endpoint.get('password'))
+
+    results = select_query_csv(sparql, query_text)
+    return results
+
+
+def __endpoint_update_query__(endpoint: dict, query_text: str):
+    uri = endpoint.get('update_uri', endpoint['query_uri'])
+    sparql = create_endpoint(uri, endpoint.get('user'), endpoint.get('password'))
+
+    sparql.setQuery(query_text)
+    return sparql.query()
 
 
 def __verify_construct__(action, variables):

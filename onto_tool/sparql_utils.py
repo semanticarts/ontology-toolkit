@@ -1,7 +1,8 @@
 import re
 from urllib.parse import urlparse, urlunparse
+from typing import Iterator
 
-from SPARQLWrapper import SPARQLWrapper, POST, BASIC
+from SPARQLWrapper import SPARQLWrapper, POST, BASIC, JSON, CSV
 
 
 def create_endpoint(url, user=None, password=None) -> SPARQLWrapper:
@@ -18,3 +19,23 @@ def create_endpoint(url, user=None, password=None) -> SPARQLWrapper:
     sparql.setMethod(POST)
 
     return sparql
+
+
+def select_query(sparql: SPARQLWrapper, query: str) -> Iterator[dict]:
+    sparql.setQuery(query)
+    sparql.setReturnFormat(JSON)
+    results = sparql.query().convert()
+
+    for result in results["results"]["bindings"]:
+        yield dict(
+            (v, result[v]["value"])
+            for v in results["head"]["vars"] if v in result
+        )
+
+
+def select_query_csv(sparql: SPARQLWrapper, query: str) -> bytes:
+    sparql.setQuery(query)
+    sparql.setReturnFormat(CSV)
+    results = sparql.query().convert()
+
+    return results
