@@ -650,14 +650,13 @@ def __bundle_local_sparql__(action, variables, output, queries):
         parsed_query = None
         try:
             parsed_update = __parse_update_query__(query_text)
-        except ParseException as pe:
+        except ParseException:
             # Not a update
             parsed_query = prepareQuery(query_text)
 
         if parsed_update:
             g.update(parsed_update)
-            for prefix, uri in parsed_update.prologue.namespace_manager.namespaces():
-                g.bind(prefix, uri)
+            __transfer_query_prefixes__(g, parsed_update)
             updated = True
         else:
             results = g.query(
@@ -672,8 +671,7 @@ def __bundle_local_sparql__(action, variables, output, queries):
 
             elif results.graph is not None:
                 # CONSTRUCT Query
-                for prefix, uri in parsed_query.prologue.namespace_manager.namespaces():
-                    results.graph.bind(prefix, uri)
+                __transfer_query_prefixes__(results.graph, parsed_query)
                 rdf_format, suffix = __determine_format_and_suffix(action)
                 construct_output = __determine_output_file_name__(output, queries, query_file, suffix=suffix)
                 results.graph.serialize(destination=construct_output, format=rdf_format, encoding='utf-8')
@@ -686,6 +684,11 @@ def __bundle_local_sparql__(action, variables, output, queries):
         else:
             rdf_format = 'turtle'
         g.serialize(destination=output, format=rdf_format, encoding='utf-8')
+
+
+def __transfer_query_prefixes__(g, parsed_update):
+    for prefix, uri in parsed_update.prologue.namespace_manager.namespaces():
+        g.bind(prefix, uri)
 
 
 def __determine_format_and_suffix(action: dict) -> tuple:
@@ -712,7 +715,7 @@ def __bundle_endpoint_sparql__(action, variables, output, queries):
         parsed_query = None
         try:
             parsed_update = __parse_update_query__(query_text)
-        except ParseException as pe:
+        except ParseException:
             # Not a update
             parsed_query = prepareQuery(query_text)
 
@@ -727,8 +730,7 @@ def __bundle_endpoint_sparql__(action, variables, output, queries):
             elif parsed_query.algebra.name == 'ConstructQuery':
                 results = __endpoint_construct_query__(action['endpoint'], query_text)
                 rdf_format, suffix = __determine_format_and_suffix(action)
-                for prefix, uri in parsed_query.prologue.namespace_manager.namespaces():
-                    results.bind(prefix, uri)
+                __transfer_query_prefixes__(results, parsed_query)
                 construct_output = __determine_output_file_name__(output, queries, query_file, suffix=suffix)
                 results.serialize(destination=construct_output, format=rdf_format, encoding='utf-8')
             else:

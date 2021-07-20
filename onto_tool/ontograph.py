@@ -19,7 +19,6 @@ from time import perf_counter
 from urllib.parse import urlparse, urlunparse
 
 import pydot
-from SPARQLWrapper import JSON
 from rdflib import Graph, BNode
 from rdflib.namespace import RDF, OWL
 from rdflib.util import guess_format
