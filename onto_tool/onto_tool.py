@@ -317,10 +317,7 @@ def generate_graphic(action, onto_files, endpoint, **kwargs):
             og.gather_schema_info_from_files()
         og.create_schema_graf()
     else:
-        if endpoint:
-            og.gather_instance_info_from_repo()
-        else:
-            raise Exception('Not yet supported!')
+        og.gather_instance_info()
         og.create_instance_graf()
 
 

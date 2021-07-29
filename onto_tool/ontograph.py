@@ -45,6 +45,7 @@ class OntoGraf:
         self.graf = None
         self.files = files
         self.repo = repo
+        self.data = None
 
         outpath = kwargs.get('outpath', '.')
         self.outpath = outpath
@@ -88,6 +89,12 @@ class OntoGraf:
 
         sparql = create_endpoint(self.repo)
         return select_query(sparql, query)
+
+    def graph_select_query(self, query):
+        """Execute SPARQL SELECT query on local data, return results as generator."""
+        results = self.data.query(query)
+        for result in results:
+            yield dict((str(k), str(v)) for k, v in zip(results.vars, result))
 
     @staticmethod
     def strip_uri(uri):
@@ -272,7 +279,7 @@ class OntoGraf:
             print()
         sys.stdout.flush()
 
-    def gather_instance_info_from_repo(self):
+    def gather_instance_info(self):
         predicate_query = """
         prefix owl: <http://www.w3.org/2002/07/owl#>
         prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -297,9 +304,18 @@ class OntoGraf:
         }
         """
         self.node_data = {}
-        all_predicates = list(self.select_query(predicate_query))
+        if self.repo:
+            all_predicates = list(self.select_query(predicate_query))
+        else:
+            self.data = Graph()
+            for file_path in self.files:
+                filename = os.path.basename(file_path)
+                logging.debug('Parsing %s for documentation', filename)
+                self.data.parse(file_path, format=guess_format(file_path))
+            all_predicates = list(self.graph_select_query(predicate_query))
+
         if not all_predicates:
-            logging.warning('No interesting predicates found in %s', self.repo)
+            logging.warning('No interesting predicates found in %s', self.repo or ' specified files')
             return
 
         for count, predicate_row in enumerate(all_predicates):
@@ -313,7 +329,10 @@ class OntoGraf:
                                         suffix=predicate_str + ' ' * 20, length=50)
             pre_time = perf_counter()
             query_text = self.create_predicate_query(predicate, predicate_row.get('type'), self.limit)
-            predicate_usage = list(self.select_query(query_text))
+            if self.repo:
+                predicate_usage = list(self.select_query(query_text))
+            else:
+                predicate_usage = list(self.graph_select_query(query_text))
             logging.debug("%s items returned for %s", len(predicate_usage), predicate)
             for usage in predicate_usage:
                 if 'src' not in usage or int(usage.get('num', 0)) < self.threshold:
@@ -383,7 +402,8 @@ class OntoGraf:
               { ?shape (sh:and|sh:or|sh:xone|sh:not|rdf:first|rdf:rest)+/sh:path ?property }
             }
             """
-        for row in self.select_query(shacl_query):
+        shacl_data = self.select_query(shacl_query) if self.repo else self.graph_select_query(shacl_query)
+        for row in shacl_data:
             self.shapes[row['class']].append(row['property'])
 
     def create_predicate_query(self, predicate, predicate_type, limit):
@@ -507,7 +527,9 @@ class OntoGraf:
     @staticmethod
     def line_width(num_used, graph_max):
         """Scale line width relative to the most commonly occurring edge for the graph"""
-        return min(5, max(1, round(log(num_used, pow(graph_max, 1/OntoGraf.MAX_LINE_WIDTH)))))
+        if graph_max == 1:
+            return OntoGraf.MAX_LINE_WIDTH
+        return min(5, max(1, round(log(num_used, pow(graph_max, 1.0/OntoGraf.MAX_LINE_WIDTH)))))
 
     def create_instance_graf(self, data_dict=None):
         self.graf = pydot.Dot(graph_type='digraph',
@@ -587,7 +609,10 @@ class OntoGraf:
             return True
 
     def filtered_graph_pattern(self, predicate):
-        if self.include:
+        if not self.repo:
+            # Local files always go in the default graph
+            return f'?s <{predicate}> ?o .'
+        elif self.include:
             return f"""
             VALUES ?graph {{{" ".join(f"<{i}>" for i in self.include)}}}
             GRAPH ?graph {{
