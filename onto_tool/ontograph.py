@@ -32,20 +32,22 @@ from .sparql_utils import create_endpoint, select_query
 class OntoGraf:
     def __init__(self, files, repo=None, **kwargs):
         self.wee = kwargs.get('wee', False)
-        title = kwargs.get('title', 'Gist')
+        title = kwargs.get('title')
         version = kwargs.get('version')
         if not version:
             version = datetime.datetime.now().isoformat()[:10]
         if repo:
-            self.title = self.anonymize_url(repo) + ': ' + version
-            out_filename = 'repo'
+            anonymized, repo_base = self.anonymize_url(repo)
+            self.title = (title or anonymized) + ': ' + version
+            out_filename = repo_base
         else:
-            self.title = f'{title} Ontology: {version}'
-            out_filename = f'{title}{version}'
+            self.title = f'{title or "Gist"} Ontology: {version}'
+            out_filename = f'{title or "Gist"}{version}'
         self.graf = None
         self.files = files
         self.repo = repo
         self.data = None
+        self.no_image = kwargs.get('no_image')
 
         outpath = kwargs.get('outpath', '.')
         self.outpath = outpath
@@ -77,10 +79,11 @@ class OntoGraf:
     def anonymize_url(url):
         """Remove username and password from URI, if present."""
         parsed = urlparse(url)
-        return urlunparse((parsed.scheme,
-                           re.sub('^.*@', '', parsed.netloc),
-                           parsed.path,
-                           '', '', ''))
+        anonymized = urlunparse((parsed.scheme,
+                                 re.sub('^.*@', '', parsed.netloc),
+                                 parsed.path,
+                                 '', '', ''))
+        return anonymized, os.path.basename(parsed.path)
 
     def select_query(self, query):
         """Execute SPARQL SELECT query, return results as generator."""
@@ -121,7 +124,11 @@ class OntoGraf:
                          for c in graph.subjects(RDF.type, OWL.ObjectProperty)]
             data_props = [self.strip_uri(c)
                           for c in graph.subjects(RDF.type, OWL.DatatypeProperty)]
-            gist_things = [self.strip_uri(c) for c in graph.subjects(RDF.type, OWL.Thing)]
+            annotation_props = [self.strip_uri(c)
+                                for c in graph.subjects(RDF.type, OWL.AnnotationProperty)]
+            all_seen = set(classes + obj_props + data_props + annotation_props)
+            gist_things = [self.strip_uri(s) for (s, o) in graph.subject_objects(RDF.type)
+                           if not isinstance(s, BNode) and not s == ontology and not self.strip_uri(s) in all_seen]
             imports = [self.strip_uri(c) for c in graph.objects(ontology, OWL.imports)]
 
             self.node_data[filename] = {
@@ -130,6 +137,7 @@ class OntoGraf:
                 "classesList": "\\l".join(classes),
                 "obj_propertiesList": "\\l".join(obj_props),
                 "data_propertiesList": "\\l".join(data_props),
+                "annotation_propertiesList": "\\l".join(annotation_props),
                 "gist_thingsList": "\\l".join(gist_things),
                 "imports": imports
             }
@@ -152,12 +160,6 @@ class OntoGraf:
           }
           UNION
           {
-            ?entity rdfs:isDefinedBy ?ontology; a/rdfs:subClassOf* gist:Category .
-            BIND(owl:Thing as ?type)
-          }
-          UNION
-          {
-            values ?type { owl:Class owl:DatatypeProperty owl:ObjectProperty owl:Thing }
             ?entity rdfs:isDefinedBy ?ontology; a ?type .
             filter(!ISBLANK(?entity))
           }
@@ -167,12 +169,12 @@ class OntoGraf:
             str(OWL.Class): 'classesList',
             str(OWL.ObjectProperty): 'obj_propertiesList',
             str(OWL.DatatypeProperty): 'data_propertiesList',
-            str(OWL.Thing): 'gist_thingsList',
-            'https://ontologies.semanticarts.com/gist/Category': 'gist_thingsList',
+            str(OWL.AnnotationProperty): 'annotation_propertiesList',
             str(OWL.imports): 'imports'
         }
         for entity in self.select_query(onto_query):
-            onto_data[entity['ontology']][mapping[entity['type']]].append(self.strip_uri(entity['entity']))
+            key = mapping.get(entity['type'], 'gist_thingsList')
+            onto_data[entity['ontology']][key].append(self.strip_uri(entity['entity']))
 
         if not onto_data:
             logging.warning('Could not find any ontology entities in %s', self.repo)
@@ -224,17 +226,19 @@ class OntoGraf:
                 classes = file_data["classesList"]
                 obj_properties = file_data["obj_propertiesList"]
                 data_properties = file_data["data_propertiesList"]
+                annotation_properties = file_data["annotation_propertiesList"]
                 gist_things = file_data["gist_thingsList"]
                 imports = file_data["imports"]
                 if wee:
                     node = pydot.Node(ontology_name)
                 else:
-                    ontology_info = "{{{}\\l\\l{}|{}|{}|{}|{}}}".format(
+                    ontology_info = "{{{}\\l\\l{}|{}|{}|{}|{}|{}}}".format(
                         file,
                         ontology_name,
                         classes,
                         obj_properties,
                         data_properties,
+                        annotation_properties,
                         gist_things)
                     node = pydot.Node(ontology_name,
                                       label=ontology_info)
@@ -247,7 +251,8 @@ class OntoGraf:
                                       arrowhead=self.arrowhead)
                     self.graf.add_edge(edge)
         self.graf.write(self.outdot)
-        self.graf.write_png(self.outpng)
+        if not self.no_image:
+            self.graf.write_png(self.outpng)
         logging.debug("Plots saved")
 
     # Print iterations progress
@@ -593,7 +598,8 @@ class OntoGraf:
                 self.graf.add_edge(edge)
 
         self.graf.write(self.outdot)
-        self.graf.write_png(self.outpng)
+        if not self.no_image:
+            self.graf.write_png(self.outpng)
         logging.debug("Plots saved")
 
     def ontology_matches_filter(self, ontology):

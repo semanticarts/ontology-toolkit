@@ -931,6 +931,8 @@ def __verify_shacl__(action, variables):
             abort_on_error=False, meta_shacl=False,
             advanced=True, js=False, debug=False)
 
+    logging.debug("Post-inference data graph has %s triples", sum(1 for _ in data_graph))
+
     if not conforms:
         if 'target' in action:
             results_graph.serialize(
@@ -1232,6 +1234,7 @@ def main(arguments):
         generate_graphic(args.action, args.ontology, args.endpoint,
                          limit=args.instance_limit, threshold=args.predicate_threshold,
                          wee=args.wee, outpath=args.output, version=args.version,
+                         no_image=args.no_image, title=args.title,
                          include=args.include, exclude=args.exclude,
                          include_pattern=args.include_pattern,
                          exclude_pattern=args.exclude_pattern,

@@ -223,6 +223,11 @@ def configure_arg_parser():
     graphic_parser.add_argument('-w', '--wee', action="store_true",
                                 help="a version of the graphic with only core"
                                 " information about ontology and imports")
+    graphic_parser.add_argument("--no-image", action="store_true",
+                                help="Do not generate PNG image, only .dot output.")
+    graphic_parser.add_argument("-t", "--title", action="store",
+                                help="Title to use for graph. If not supplied, the repo URI will be used if"
+                                " graphing an endpoint, or 'Gist' if graphing local files.")
     graphic_parser.add_argument('ontology', nargs="*", default=[],
                                 help="Ontology file, directory or name pattern")
     return parser

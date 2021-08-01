@@ -8,16 +8,20 @@
 
 :Student a owl:Class ;
          rdfs:subClassOf :Person ;
+         rdfs:isDefinedBy :Domain ;
         rdfs:label "Student" .
 
 :Teacher a owl:Class ;
          rdfs:subClassOf :Person ;
+         rdfs:isDefinedBy :Domain ;
         rdfs:label "Teacher" .
 
 :School a owl:Class ;
+         rdfs:isDefinedBy :Domain ;
         rdfs:label "School" .
 
 :worksFor a owl:ObjectProperty ;
+         rdfs:isDefinedBy :Domain ;
             rdfs:domain :Teacher ;
             rdfs:range :School ;
             rdfs:label "works for" .
