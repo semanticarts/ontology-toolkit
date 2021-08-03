@@ -112,21 +112,21 @@ The `graphic` sub-command will create either
 * a comprehensive diagram showing ontology modules together with classes, object properties and individuals
   together with the path of imports, or (if the 'wee' option is selected) a simple diagram of the ontology
   import hierarchy, or
-* a diagram of the use of classes and object and data properties in a triple store.
+* a diagram of the use of classes and object and data properties in a triple store or local ontology files.
     
 Graphics are exported both as ```png``` files and also as a ```dot``` file.  This ```dot``` file can be used with Graphviz or with web tools such as [Dot Viewer](http://www.semantechs.co.uk/turtle-editor-viewer/)
 
 ```
-usage: onto_tool graphic [-h] [-e ENDPOINT] [--schema | --data] [--debug]
-                         [-o OUTPUT] [--show-shacl]
-                         [--instance-limit INSTANCE_LIMIT]
+usage: onto_tool graphic [-h] [-e ENDPOINT] [--schema | --data]
+                         [--single-ontology-graphs] [--debug] [-o OUTPUT]
+                         [--show-shacl] [--instance-limit INSTANCE_LIMIT]
                          [--predicate-threshold PREDICATE_THRESHOLD]
                          [--include [INCLUDE [INCLUDE ...]] |
                          --include-pattern [INCLUDE_REGEX [INCLUDE_REGEX ...]]
                          | --exclude [EXCLUDE [EXCLUDE ...]] |
                          --exclude-pattern
                          [EXCLUDE_REGEX [EXCLUDE_REGEX ...]]] [-v VERSION]
-                         [-w]
+                         [-w] [--no-image] [-t TITLE]
                          [ontology [ontology ...]]
 
 positional arguments:
@@ -138,6 +138,12 @@ optional arguments:
                         URI of SPARQL endpoint to use to gather data
   --schema              Generate ontology import graph (default)
   --data                Analyze instances for types and links
+  --single-ontology-graphs
+                        If specified in combination with --endpoint when
+                        generating a schema graph, assume that every ontology
+                        is in its own named graph in the triple store.
+                        Otherwise rdfs:isDefinedBy will be used to locate
+                        entities defined by each ontology.
   --debug               Emit verbose debug output
   -o OUTPUT, --output OUTPUT
                         Output directory for generated graphics
@@ -151,6 +157,11 @@ optional arguments:
                         Version to place in graphic
   -w, --wee             a version of the graphic with only core information
                         about ontology and imports
+  --no-image            Do not generate PNG image, only .dot output.
+  -t TITLE, --title TITLE
+                        Title to use for graph. If not supplied, the repo URI
+                        will be used if graphing an endpoint, or 'Gist' if
+                        graphing local files.
 
 Sampling Limits:
   --instance-limit INSTANCE_LIMIT

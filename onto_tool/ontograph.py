@@ -47,7 +47,8 @@ class OntoGraf:
         self.files = files
         self.repo = repo
         self.data = None
-        self.no_image = kwargs.get('no_image')
+        self.no_image = kwargs.get('no_image', False)
+        self.single_graph = kwargs.get('single_graph', False)
 
         outpath = kwargs.get('outpath', '.')
         self.outpath = outpath
@@ -145,26 +146,51 @@ class OntoGraf:
 
     def gather_schema_info_from_repo(self):
         onto_data = defaultdict(lambda: defaultdict(list))
-        onto_query = """
-        prefix owl: <http://www.w3.org/2002/07/owl#>
-        prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-        prefix xsd: <http://www.w3.org/2001/XMLSchema#>
-        prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        prefix gist: <https://ontologies.semanticarts.com/gist/>
+        if self.single_graph:
+            onto_query = """
+            prefix owl: <http://www.w3.org/2002/07/owl#>
+            prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+            prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            prefix gist: <https://ontologies.semanticarts.com/gist/>
 
-        select ?ontology ?entity ?type where {
-          ?ontology a owl:Ontology .
-          {
-            ?ontology owl:imports ?entity .
-            BIND(owl:imports as ?type)
-          }
-          UNION
-          {
-            ?entity rdfs:isDefinedBy ?ontology; a ?type .
-            filter(!ISBLANK(?entity))
-          }
-        }
-        """
+            select ?ontology ?entity ?type where {
+              graph ?g {
+                ?ontology a owl:Ontology .
+                {
+                  ?ontology owl:imports ?entity .
+                  BIND(owl:imports as ?type)
+                }
+                UNION
+                {
+                  ?entity a ?type .
+                  FILTER(?type != owl:Ontology)
+                  filter(!ISBLANK(?entity))
+                }
+              }
+            }
+            """
+        else:
+            onto_query = """
+            prefix owl: <http://www.w3.org/2002/07/owl#>
+            prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+            prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            prefix gist: <https://ontologies.semanticarts.com/gist/>
+
+            select ?ontology ?entity ?type where {
+              ?ontology a owl:Ontology .
+              {
+                ?ontology owl:imports ?entity .
+                BIND(owl:imports as ?type)
+              }
+              UNION
+              {
+                ?entity rdfs:isDefinedBy ?ontology; a ?type .
+                filter(!ISBLANK(?entity))
+              }
+            }
+            """
         mapping = {
             str(OWL.Class): 'classesList',
             str(OWL.ObjectProperty): 'obj_propertiesList',
@@ -184,7 +210,7 @@ class OntoGraf:
         for ontology, props in onto_data.items():
             self.node_data[ontology]['ontology'] = ontology
             self.node_data[ontology]['ontologyName'] = self.strip_uri(ontology)
-            for key in set(mapping.values()):
+            for key in set(mapping.values()).union(set(['gist_thingsList'])):
                 if key != 'imports':
                     self.node_data[ontology][key] = "\\l".join(sorted(props[key])) if key in props else ''
                 else:

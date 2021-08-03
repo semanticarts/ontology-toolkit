@@ -1233,6 +1233,7 @@ def main(arguments):
     if args.command == 'graphic':
         generate_graphic(args.action, args.ontology, args.endpoint,
                          limit=args.instance_limit, threshold=args.predicate_threshold,
+                         single_graph=args.single_ontology_graphs,
                          wee=args.wee, outpath=args.output, version=args.version,
                          no_image=args.no_image, title=args.title,
                          include=args.include, exclude=args.exclude,

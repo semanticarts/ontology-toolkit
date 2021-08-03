@@ -170,6 +170,12 @@ def configure_arg_parser():
     which_graphic.add_argument("--data", dest="action", action="store_const",
                                const="instances",
                                help="Analyze instances for types and links")
+    graphic_parser.add_argument("--single-ontology-graphs", action="store_true",
+                                help="If specified in combination with --endpoint"
+                                     " when generating a schema graph, assume that every"
+                                     " ontology is in its own named graph in the triple store."
+                                     " Otherwise rdfs:isDefinedBy will be used to locate"
+                                     " entities defined by each ontology.")
     graphic_parser.add_argument('--debug', action="store_true",
                                 help="Emit verbose debug output")
     graphic_parser.add_argument('-o', '--output', action="store",
