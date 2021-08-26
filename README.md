@@ -112,21 +112,21 @@ The `graphic` sub-command will create either
 * a comprehensive diagram showing ontology modules together with classes, object properties and individuals
   together with the path of imports, or (if the 'wee' option is selected) a simple diagram of the ontology
   import hierarchy, or
-* a diagram of the use of classes and object and data properties in a triple store.
+* a diagram of the use of classes and object and data properties in a triple store or local ontology files.
     
 Graphics are exported both as ```png``` files and also as a ```dot``` file.  This ```dot``` file can be used with Graphviz or with web tools such as [Dot Viewer](http://www.semantechs.co.uk/turtle-editor-viewer/)
 
 ```
-usage: onto_tool graphic [-h] [-e ENDPOINT] [--schema | --data] [--debug]
-                         [-o OUTPUT] [--show-shacl]
-                         [--instance-limit INSTANCE_LIMIT]
+usage: onto_tool graphic [-h] [-e ENDPOINT] [--schema | --data]
+                         [--single-ontology-graphs] [--debug] [-o OUTPUT]
+                         [--show-shacl] [--instance-limit INSTANCE_LIMIT]
                          [--predicate-threshold PREDICATE_THRESHOLD]
                          [--include [INCLUDE [INCLUDE ...]] |
                          --include-pattern [INCLUDE_REGEX [INCLUDE_REGEX ...]]
                          | --exclude [EXCLUDE [EXCLUDE ...]] |
                          --exclude-pattern
                          [EXCLUDE_REGEX [EXCLUDE_REGEX ...]]] [-v VERSION]
-                         [-w]
+                         [-w] [--no-image] [-t TITLE]
                          [ontology [ontology ...]]
 
 positional arguments:
@@ -138,6 +138,12 @@ optional arguments:
                         URI of SPARQL endpoint to use to gather data
   --schema              Generate ontology import graph (default)
   --data                Analyze instances for types and links
+  --single-ontology-graphs
+                        If specified in combination with --endpoint when
+                        generating a schema graph, assume that every ontology
+                        is in its own named graph in the triple store.
+                        Otherwise rdfs:isDefinedBy will be used to locate
+                        entities defined by each ontology.
   --debug               Emit verbose debug output
   -o OUTPUT, --output OUTPUT
                         Output directory for generated graphics
@@ -151,6 +157,11 @@ optional arguments:
                         Version to place in graphic
   -w, --wee             a version of the graphic with only core information
                         about ontology and imports
+  --no-image            Do not generate PNG image, only .dot output.
+  -t TITLE, --title TITLE
+                        Title to use for graph. If not supplied, the repo URI
+                        will be used if graphing an endpoint, or 'Gist' if
+                        graphing local files.
 
 Sampling Limits:
   --instance-limit INSTANCE_LIMIT
@@ -361,6 +372,15 @@ emitted as a `INFO`-level log message prior to the execution of the action.
     * `SELECT` query results are stored in the file specified via `target` as a CSV.
     * RDF results from a `CONSTRUCT` query are
   stored as either Turtle, RDF/XML or N-Triples, depending on the `format` option (`turtle`, `xml`, or `nt`).
+      Update queries will alter the input data in place, and the resulting
+      graph will be output in the specified format.
+    * As an alternative to operating on local RDF specified via 'source', a query can
+      be executed on a triple store by specifying an `endpoint`, which must
+      contain a `query_uri`, and can optionally specify `user`/`password` which will
+      authenticate via HTTP basic authentication. Update queries will modify the
+      triple store directly, and a separate `update_uri` can be specified
+      for databases which require it.
+
   
 ##### Utility Actions
 - `markdown` transforms a `.md` file referenced in `source` into an HTML output specified in `target`.
@@ -451,3 +471,18 @@ value of the `type` option:
   The validation will be considered as a failure if the resulting graph is non-empty. `target`,
   `stopOnFail` and `query`/`queries` are handled same as `select` validation, and `failOn` is used to determine which
   violations will terminate execution.
+* Validation can be performed against a SPARQL endpoint instead of local RDF
+  data by specifying `endpoint` instead of `source`/`includes`. `endpoint` must
+  contain a `query_uri`, and can optionally specify `user`/`password` which will
+  authenticate via HTTP basic authentication. For example:
+  ```
+  - action: 'verify'
+    type: 'construct'
+    endpoint:
+      query_uri: 'https://my.endpoint.com/sparql'
+      user: 'test-user'
+      password: 'test-user'
+    target: '{output}/verify_construct_results'
+    stopOnFail: false
+    query: '{input}/verify_via_construct.rq'
+  ```

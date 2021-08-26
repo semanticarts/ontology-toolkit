@@ -19,10 +19,11 @@ from time import perf_counter
 from urllib.parse import urlparse, urlunparse
 
 import pydot
-from SPARQLWrapper import SPARQLWrapper, POST, BASIC, JSON
 from rdflib import Graph, BNode
 from rdflib.namespace import RDF, OWL
 from rdflib.util import guess_format
+
+from .sparql_utils import create_endpoint, select_query
 
 
 # Ignore \l - uses them as a line separator
@@ -31,19 +32,23 @@ from rdflib.util import guess_format
 class OntoGraf:
     def __init__(self, files, repo=None, **kwargs):
         self.wee = kwargs.get('wee', False)
-        title = kwargs.get('title', 'Gist')
+        title = kwargs.get('title')
         version = kwargs.get('version')
         if not version:
             version = datetime.datetime.now().isoformat()[:10]
         if repo:
-            self.title = self.anonymize_url(repo) + ': ' + version
-            out_filename = 'repo'
+            anonymized, repo_base = self.anonymize_url(repo)
+            self.title = (title or anonymized) + ': ' + version
+            out_filename = repo_base
         else:
-            self.title = f'{title} Ontology: {version}'
-            out_filename = f'{title}{version}'
+            self.title = f'{title or "Gist"} Ontology: {version}'
+            out_filename = f'{title or "Gist"}{version}'
         self.graf = None
         self.files = files
         self.repo = repo
+        self.data = None
+        self.no_image = kwargs.get('no_image', False)
+        self.single_graph = kwargs.get('single_graph', False)
 
         outpath = kwargs.get('outpath', '.')
         self.outpath = outpath
@@ -75,36 +80,25 @@ class OntoGraf:
     def anonymize_url(url):
         """Remove username and password from URI, if present."""
         parsed = urlparse(url)
-        return urlunparse((parsed.scheme,
-                           re.sub('^.*@', '', parsed.netloc),
-                           parsed.path,
-                           '', '', ''))
+        anonymized = urlunparse((parsed.scheme,
+                                 re.sub('^.*@', '', parsed.netloc),
+                                 parsed.path,
+                                 '', '', ''))
+        return anonymized, os.path.basename(parsed.path)
 
     def select_query(self, query):
         """Execute SPARQL SELECT query, return results as generator."""
         logging.debug(f"Query against {self.repo}")
         logging.debug(f"Query\n {query}")
 
-        repo_url = urlparse(self.repo)
+        sparql = create_endpoint(self.repo)
+        return select_query(sparql, query)
 
-        sparql = SPARQLWrapper(urlunparse((repo_url.scheme,
-                                           re.sub('^.*@', '', repo_url.netloc),
-                                           repo_url.path,
-                                           '', '', '')))
-
-        sparql.setHTTPAuth(BASIC)
-        sparql.setCredentials(repo_url.username, repo_url.password)
-        sparql.setMethod(POST)
-
-        sparql.setQuery(query)
-        sparql.setReturnFormat(JSON)
-        results = sparql.query().convert()
-
-        for result in results["results"]["bindings"]:
-            yield dict(
-                (v, result[v]["value"])
-                for v in results["head"]["vars"] if v in result
-            )
+    def graph_select_query(self, query):
+        """Execute SPARQL SELECT query on local data, return results as generator."""
+        results = self.data.query(query)
+        for result in results:
+            yield dict((str(k), str(v)) for k, v in zip(results.vars, result))
 
     @staticmethod
     def strip_uri(uri):
@@ -131,7 +125,11 @@ class OntoGraf:
                          for c in graph.subjects(RDF.type, OWL.ObjectProperty)]
             data_props = [self.strip_uri(c)
                           for c in graph.subjects(RDF.type, OWL.DatatypeProperty)]
-            gist_things = [self.strip_uri(c) for c in graph.subjects(RDF.type, OWL.Thing)]
+            annotation_props = [self.strip_uri(c)
+                                for c in graph.subjects(RDF.type, OWL.AnnotationProperty)]
+            all_seen = set(classes + obj_props + data_props + annotation_props)
+            gist_things = [self.strip_uri(s) for (s, o) in graph.subject_objects(RDF.type)
+                           if not isinstance(s, BNode) and not s == ontology and not self.strip_uri(s) in all_seen]
             imports = [self.strip_uri(c) for c in graph.objects(ontology, OWL.imports)]
 
             self.node_data[filename] = {
@@ -140,6 +138,7 @@ class OntoGraf:
                 "classesList": "\\l".join(classes),
                 "obj_propertiesList": "\\l".join(obj_props),
                 "data_propertiesList": "\\l".join(data_props),
+                "annotation_propertiesList": "\\l".join(annotation_props),
                 "gist_thingsList": "\\l".join(gist_things),
                 "imports": imports
             }
@@ -147,42 +146,61 @@ class OntoGraf:
 
     def gather_schema_info_from_repo(self):
         onto_data = defaultdict(lambda: defaultdict(list))
-        onto_query = """
-        prefix owl: <http://www.w3.org/2002/07/owl#>
-        prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-        prefix xsd: <http://www.w3.org/2001/XMLSchema#>
-        prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        prefix gist: <https://ontologies.semanticarts.com/gist/>
+        if self.single_graph:
+            onto_query = """
+            prefix owl: <http://www.w3.org/2002/07/owl#>
+            prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+            prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            prefix gist: <https://ontologies.semanticarts.com/gist/>
 
-        select ?ontology ?entity ?type where {
-          ?ontology a owl:Ontology .
-          {
-            ?ontology owl:imports ?entity .
-            BIND(owl:imports as ?type)
-          }
-          UNION
-          {
-            ?entity rdfs:isDefinedBy ?ontology; a/rdfs:subClassOf* gist:Category .
-            BIND(owl:Thing as ?type)
-          }
-          UNION
-          {
-            values ?type { owl:Class owl:DatatypeProperty owl:ObjectProperty owl:Thing }
-            ?entity rdfs:isDefinedBy ?ontology; a ?type .
-            filter(!ISBLANK(?entity))
-          }
-        }
-        """
+            select ?ontology ?entity ?type where {
+              graph ?g {
+                ?ontology a owl:Ontology .
+                {
+                  ?ontology owl:imports ?entity .
+                  BIND(owl:imports as ?type)
+                }
+                UNION
+                {
+                  ?entity a ?type .
+                  FILTER(?type != owl:Ontology)
+                  filter(!ISBLANK(?entity))
+                }
+              }
+            }
+            """
+        else:
+            onto_query = """
+            prefix owl: <http://www.w3.org/2002/07/owl#>
+            prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+            prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            prefix gist: <https://ontologies.semanticarts.com/gist/>
+
+            select ?ontology ?entity ?type where {
+              ?ontology a owl:Ontology .
+              {
+                ?ontology owl:imports ?entity .
+                BIND(owl:imports as ?type)
+              }
+              UNION
+              {
+                ?entity rdfs:isDefinedBy ?ontology; a ?type .
+                filter(!ISBLANK(?entity))
+              }
+            }
+            """
         mapping = {
             str(OWL.Class): 'classesList',
             str(OWL.ObjectProperty): 'obj_propertiesList',
             str(OWL.DatatypeProperty): 'data_propertiesList',
-            str(OWL.Thing): 'gist_thingsList',
-            'https://ontologies.semanticarts.com/gist/Category': 'gist_thingsList',
+            str(OWL.AnnotationProperty): 'annotation_propertiesList',
             str(OWL.imports): 'imports'
         }
         for entity in self.select_query(onto_query):
-            onto_data[entity['ontology']][mapping[entity['type']]].append(self.strip_uri(entity['entity']))
+            key = mapping.get(entity['type'], 'gist_thingsList')
+            onto_data[entity['ontology']][key].append(self.strip_uri(entity['entity']))
 
         if not onto_data:
             logging.warning('Could not find any ontology entities in %s', self.repo)
@@ -192,7 +210,7 @@ class OntoGraf:
         for ontology, props in onto_data.items():
             self.node_data[ontology]['ontology'] = ontology
             self.node_data[ontology]['ontologyName'] = self.strip_uri(ontology)
-            for key in set(mapping.values()):
+            for key in set(mapping.values()).union(set(['gist_thingsList'])):
                 if key != 'imports':
                     self.node_data[ontology][key] = "\\l".join(sorted(props[key])) if key in props else ''
                 else:
@@ -234,17 +252,19 @@ class OntoGraf:
                 classes = file_data["classesList"]
                 obj_properties = file_data["obj_propertiesList"]
                 data_properties = file_data["data_propertiesList"]
+                annotation_properties = file_data["annotation_propertiesList"]
                 gist_things = file_data["gist_thingsList"]
                 imports = file_data["imports"]
                 if wee:
                     node = pydot.Node(ontology_name)
                 else:
-                    ontology_info = "{{{}\\l\\l{}|{}|{}|{}|{}}}".format(
+                    ontology_info = "{{{}\\l\\l{}|{}|{}|{}|{}|{}}}".format(
                         file,
                         ontology_name,
                         classes,
                         obj_properties,
                         data_properties,
+                        annotation_properties,
                         gist_things)
                     node = pydot.Node(ontology_name,
                                       label=ontology_info)
@@ -257,7 +277,8 @@ class OntoGraf:
                                       arrowhead=self.arrowhead)
                     self.graf.add_edge(edge)
         self.graf.write(self.outdot)
-        self.graf.write_png(self.outpng)
+        if not self.no_image:
+            self.graf.write_png(self.outpng)
         logging.debug("Plots saved")
 
     # Print iterations progress
@@ -289,7 +310,7 @@ class OntoGraf:
             print()
         sys.stdout.flush()
 
-    def gather_instance_info_from_repo(self):
+    def gather_instance_info(self):
         predicate_query = """
         prefix owl: <http://www.w3.org/2002/07/owl#>
         prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -314,9 +335,18 @@ class OntoGraf:
         }
         """
         self.node_data = {}
-        all_predicates = list(self.select_query(predicate_query))
+        if self.repo:
+            all_predicates = list(self.select_query(predicate_query))
+        else:
+            self.data = Graph()
+            for file_path in self.files:
+                filename = os.path.basename(file_path)
+                logging.debug('Parsing %s for documentation', filename)
+                self.data.parse(file_path, format=guess_format(file_path))
+            all_predicates = list(self.graph_select_query(predicate_query))
+
         if not all_predicates:
-            logging.warning('No interesting predicates found in %s', self.repo)
+            logging.warning('No interesting predicates found in %s', self.repo or ' specified files')
             return
 
         for count, predicate_row in enumerate(all_predicates):
@@ -330,7 +360,10 @@ class OntoGraf:
                                         suffix=predicate_str + ' ' * 20, length=50)
             pre_time = perf_counter()
             query_text = self.create_predicate_query(predicate, predicate_row.get('type'), self.limit)
-            predicate_usage = list(self.select_query(query_text))
+            if self.repo:
+                predicate_usage = list(self.select_query(query_text))
+            else:
+                predicate_usage = list(self.graph_select_query(query_text))
             logging.debug("%s items returned for %s", len(predicate_usage), predicate)
             for usage in predicate_usage:
                 if 'src' not in usage or int(usage.get('num', 0)) < self.threshold:
@@ -400,7 +433,8 @@ class OntoGraf:
               { ?shape (sh:and|sh:or|sh:xone|sh:not|rdf:first|rdf:rest)+/sh:path ?property }
             }
             """
-        for row in self.select_query(shacl_query):
+        shacl_data = self.select_query(shacl_query) if self.repo else self.graph_select_query(shacl_query)
+        for row in shacl_data:
             self.shapes[row['class']].append(row['property'])
 
     def create_predicate_query(self, predicate, predicate_type, limit):
@@ -524,7 +558,9 @@ class OntoGraf:
     @staticmethod
     def line_width(num_used, graph_max):
         """Scale line width relative to the most commonly occurring edge for the graph"""
-        return min(5, max(1, round(log(num_used, pow(graph_max, 1/OntoGraf.MAX_LINE_WIDTH)))))
+        if graph_max == 1:
+            return OntoGraf.MAX_LINE_WIDTH
+        return min(5, max(1, round(log(num_used, pow(graph_max, 1.0/OntoGraf.MAX_LINE_WIDTH)))))
 
     def create_instance_graf(self, data_dict=None):
         self.graf = pydot.Dot(graph_type='digraph',
@@ -588,7 +624,8 @@ class OntoGraf:
                 self.graf.add_edge(edge)
 
         self.graf.write(self.outdot)
-        self.graf.write_png(self.outpng)
+        if not self.no_image:
+            self.graf.write_png(self.outpng)
         logging.debug("Plots saved")
 
     def ontology_matches_filter(self, ontology):
@@ -604,7 +641,10 @@ class OntoGraf:
             return True
 
     def filtered_graph_pattern(self, predicate):
-        if self.include:
+        if not self.repo:
+            # Local files always go in the default graph
+            return f'?s <{predicate}> ?o .'
+        elif self.include:
             return f"""
             VALUES ?graph {{{" ".join(f"<{i}>" for i in self.include)}}}
             GRAPH ?graph {{

@@ -1,0 +1,7 @@
+prefix skos: <http://www.w3.org/2004/02/skos/core#>
+prefix : <http://example.com/>
+
+select ?person ?name
+WHERE {
+    GRAPH :bundle_sparql_test { ?person skos:prefLabel ?name }
+}

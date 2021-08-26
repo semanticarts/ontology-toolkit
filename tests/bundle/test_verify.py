@@ -95,6 +95,27 @@ def test_verify_construct(caplog):
     assert not isfile('test/bundle/verify_construct_results/verify_no_errors_construct_query.ttl')
 
 
+def test_verify_construct_endpoint(caplog):
+    with raises(SystemExit) as wrapped_exit:
+        onto_tool.main([
+            'bundle', 'tests/bundle/verify_construct_endpoint.yaml'
+        ])
+    assert wrapped_exit.type == SystemExit
+    assert wrapped_exit.value.code == 1
+
+    logs = caplog.text
+    assert re.search(r'Verification query .*verify_fixed_error', logs)
+    assert 'fails' in logs
+
+    validation_graph = Graph()
+    validation_graph.parse(
+        'tests/bundle/verify_construct_results/verify_fixed_error.ttl',
+        format='turtle')
+    sh = Namespace('http://www.w3.org/ns/shacl#')
+    errors = [validation_graph.subjects(RDF.type, sh.ValidationResult)]
+    assert len(errors) == 1
+
+
 def test_verify_shacl(caplog):
     with raises(SystemExit) as wrapped_exit:
         onto_tool.main([

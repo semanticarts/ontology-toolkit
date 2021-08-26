@@ -1,0 +1,10 @@
+prefix skos: <http://www.w3.org/2004/02/skos/core#>
+prefix : <http://example.com/>
+
+CONSTRUCT {
+    ?person skos:prefLabel ?new_name
+}
+WHERE {
+    GRAPH :bundle_sparql_test { ?person skos:prefLabel ?name }
+    BIND(CONCAT(?name, " Johnson") as ?new_name)
+}

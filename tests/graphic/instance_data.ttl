@@ -1,0 +1,12 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix : <http://example.com/> .
+
+:Instances a owl:Ontology; owl:imports :Domain; rdfs:label "Instance Data" .
+
+:_t1 a :Teacher; :worksFor :_u1; :teaches :_s1; rdfs:isDefinedBy :Instances .
+:_u1 a :School; rdfs:isDefinedBy :Instances .
+:_s1 a :Student; :isFriendOf :_p1; rdfs:isDefinedBy :Instances .
+:_p1 a :Person; :hasPhoneNumber "123-456-7890"; rdfs:isDefinedBy :Instances .

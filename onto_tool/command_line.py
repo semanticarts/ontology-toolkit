@@ -170,6 +170,12 @@ def configure_arg_parser():
     which_graphic.add_argument("--data", dest="action", action="store_const",
                                const="instances",
                                help="Analyze instances for types and links")
+    graphic_parser.add_argument("--single-ontology-graphs", action="store_true",
+                                help="If specified in combination with --endpoint"
+                                     " when generating a schema graph, assume that every"
+                                     " ontology is in its own named graph in the triple store."
+                                     " Otherwise rdfs:isDefinedBy will be used to locate"
+                                     " entities defined by each ontology.")
     graphic_parser.add_argument('--debug', action="store_true",
                                 help="Emit verbose debug output")
     graphic_parser.add_argument('-o', '--output', action="store",
@@ -223,6 +229,11 @@ def configure_arg_parser():
     graphic_parser.add_argument('-w', '--wee', action="store_true",
                                 help="a version of the graphic with only core"
                                 " information about ontology and imports")
+    graphic_parser.add_argument("--no-image", action="store_true",
+                                help="Do not generate PNG image, only .dot output.")
+    graphic_parser.add_argument("-t", "--title", action="store",
+                                help="Title to use for graph. If not supplied, the repo URI will be used if"
+                                " graphing an endpoint, or 'Gist' if graphing local files.")
     graphic_parser.add_argument('ontology', nargs="*", default=[],
                                 help="Ontology file, directory or name pattern")
     return parser

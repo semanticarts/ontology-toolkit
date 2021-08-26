@@ -1,0 +1,14 @@
+bundle: test
+variables:
+  input: "tests/bundle"
+  output: "tests/bundle"
+actions:
+  - action: 'verify'
+    type: 'construct'
+    endpoint:
+      query_uri: 'https://agraph.semanticarts.com/catalogs/demo-catalog/repositories/ci-test'
+      user: 'ci-test-user'
+      password: 'ci-test-user'
+    target: '{output}/verify_construct_results'
+    stopOnFail: false
+    query: '{input}/verify_fixed_error.rq'
