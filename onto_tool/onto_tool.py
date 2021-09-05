@@ -718,14 +718,14 @@ def __bundle_endpoint_sparql__(action, variables, output, queries):
 
         # parsed_query.algebra.name will be SelectQuery, ConstructQuery or AskQuery
         if parsed_update:
-            __endpoint_update_query__(action['endpoint'], query_text)
+            __endpoint_update_query__(action['endpoint'], variables, query_text)
         else:
             if parsed_query.algebra.name == 'SelectQuery':
                 select_output = __determine_output_file_name__(output, queries, query_file, suffix='csv')
                 with open(select_output, 'wb') as csv_file:
-                    csv_file.write(__endpoint_select_query__(action['endpoint'], query_text))
+                    csv_file.write(__endpoint_select_query__(action['endpoint'], variables, query_text))
             elif parsed_query.algebra.name == 'ConstructQuery':
-                results = __endpoint_construct_query__(action['endpoint'], query_text)
+                results = __endpoint_construct_query__(action['endpoint'], variables, query_text)
                 rdf_format, suffix = __determine_format_and_suffix(action)
                 __transfer_query_prefixes__(results, parsed_query)
                 construct_output = __determine_output_file_name__(output, queries, query_file, suffix=suffix)
@@ -819,8 +819,11 @@ def __verify_select__(action, variables):
         exit(1)
 
 
-def __endpoint_construct_query__(endpoint: dict, query_text: str) -> Graph:
-    sparql = create_endpoint(endpoint['query_uri'], endpoint.get('user'), endpoint.get('password'))
+def __endpoint_construct_query__(endpoint: dict, variables: dict, query_text: str) -> Graph:
+    sparql = create_endpoint(
+        endpoint['query_uri'].format(**variables),
+        endpoint.get('user').format(**variables),
+        endpoint.get('password').format(**variables))
 
     sparql.setQuery(query_text)
     sparql.setReturnFormat(TURTLE)
@@ -830,16 +833,22 @@ def __endpoint_construct_query__(endpoint: dict, query_text: str) -> Graph:
     return rg
 
 
-def __endpoint_select_query__(endpoint: dict, query_text: str) -> bytes:
-    sparql = create_endpoint(endpoint['query_uri'], endpoint.get('user'), endpoint.get('password'))
+def __endpoint_select_query__(endpoint: dict, variables: dict, query_text: str) -> bytes:
+    sparql = create_endpoint(
+        endpoint['query_uri'].format(**variables),
+        endpoint.get('user').format(**variables),
+        endpoint.get('password').format(**variables))
 
     results = select_query_csv(sparql, query_text)
     return results
 
 
-def __endpoint_update_query__(endpoint: dict, query_text: str):
+def __endpoint_update_query__(endpoint: dict, variables: dict, query_text: str):
     uri = endpoint.get('update_uri', endpoint['query_uri'])
-    sparql = create_endpoint(uri, endpoint.get('user'), endpoint.get('password'))
+    sparql = create_endpoint(
+        uri.format(**variables),
+        endpoint.get('user').format(**variables),
+        endpoint.get('password').format(**variables))
 
     sparql.setQuery(query_text)
     return sparql.query()
@@ -859,7 +868,7 @@ def __verify_construct__(action, variables):
         logging.debug("Executing CONSTRUCT query %s", query_file)
         parsed_query = prepareQuery(query_text)
         if 'endpoint' in action:
-            results = __endpoint_construct_query__(action['endpoint'], query_text)
+            results = __endpoint_construct_query__(action['endpoint'], variables, query_text)
         else:
             qr = g.query(
                 parsed_query,
