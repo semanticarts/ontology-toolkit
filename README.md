@@ -4,7 +4,7 @@ Maintain version and dependency info in RDF ontologies.
 
 ## Installation
 
-To install the toolkit, run `pip install .` from the root directory, which
+To install the toolkit, run `pip install .` (not the dot at the end of the command!) from the root directory, which
 will install the `onto_tool` command and all its dependencies into your environment.
 
 ```
