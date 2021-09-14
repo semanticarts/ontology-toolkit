@@ -597,6 +597,8 @@ def __bundle_copy__(action, variables):
                 replace_patterns_in_file(in_out['outputFile'],
                                          action['replace']['from'].format(**variables),
                                          action['replace']['to'].format(**variables))
+        elif isdir(in_out['inputFile']):
+            shutil.copytree(in_out['inputFile'], in_out['outputFile'])
 
 
 @register(name="move")
@@ -609,6 +611,8 @@ def __bundle_move__(action, variables):
                 replace_patterns_in_file(in_out['outputFile'],
                                          action['replace']['from'].format(**variables),
                                          action['replace']['to'].format(**variables))
+        elif isdir(in_out['inputFile']):
+            shutil.move(in_out['inputFile'], in_out['outputFile'])
 
 
 @register(name="markdown")
