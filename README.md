@@ -6,7 +6,7 @@ Maintain version and dependency info in RDF ontologies.
 
 ## Easy Install 
 
-For the simplest installation use `pip install onto-tool`. 
+To install the most recent released version of the toolkit use `pip install onto-tool`. 
 
 ## Development Install
 
