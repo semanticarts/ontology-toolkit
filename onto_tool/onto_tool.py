@@ -638,7 +638,7 @@ def __bundle_graph__(action, variables):
         os.mkdir(documentation)
     compact = action['compact'] if 'compact' in action else False
     og = OntoGraf([f['inputFile'] for f in __bundle_file_list(action, variables)],
-                  outpath=documentation, wee=compact, title=title, version=version)
+                  outpath=documentation, wee=[] if compact else None, title=title, version=version)
     og.gather_schema_info_from_files()
     og.create_schema_graf()
 
@@ -1157,6 +1157,11 @@ def bundle_ontology(command_line_variables, bundle_path):
             raise Exception('Unknown action ' + str(action))
 
 
+def __suppress_ssl_certificate_check():
+    import ssl
+    ssl._create_default_https_context = ssl._create_unverified_context
+
+
 def export_ontology(args, output_format):
     """Export one or more files as a single output.
 
@@ -1238,6 +1243,9 @@ def main(arguments):
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
+
+    if args.insecure:
+        __suppress_ssl_certificate_check()
 
     if args.command == 'bundle':
         bundle_ontology(args.variables, args.bundle)

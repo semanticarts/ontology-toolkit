@@ -59,6 +59,8 @@ class OntologyUriValidator(argparse.Action):
 def configure_arg_parser():
     """Configure command line parser."""
     parser = argparse.ArgumentParser(description='Ontology toolkit.')
+    parser.add_argument('-k', '--insecure', action="store_true",
+                        help="Allow insecure server connections when using SSL")
     subparsers = parser.add_subparsers(help='sub-command help', dest='command')
 
     update_parser = subparsers.add_parser('update',
@@ -226,9 +228,10 @@ def configure_arg_parser():
                                     " using --exclude.")
     graphic_parser.add_argument('-v', '--version', help="Version to place in graphic",
                                 action="store")
-    graphic_parser.add_argument('-w', '--wee', action="store_true",
-                                help="a version of the graphic with only core"
-                                " information about ontology and imports")
+    graphic_parser.add_argument('-w', '--wee', nargs="*", default=None,
+                                help="For ontologies matching the patterns specified, only render "
+                                     "the name and import information. If no patterns are specified, applies "
+                                     "to all onotologies.")
     graphic_parser.add_argument("--no-image", action="store_true",
                                 help="Do not generate PNG image, only .dot output.")
     graphic_parser.add_argument("-t", "--title", action="store",
