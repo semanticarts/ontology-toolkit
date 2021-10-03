@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="onto_tool",
-    version="1.4.3",
+    version="1.5.0",
     author="Boris Pelakh",
     author_email="boris.pelakh@semanticarts.com",
     description="Ontology Maintenance and Release Tool",

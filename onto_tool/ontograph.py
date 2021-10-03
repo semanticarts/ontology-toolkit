@@ -31,7 +31,7 @@ from .sparql_utils import create_endpoint, select_query
 
 class OntoGraf:
     def __init__(self, files, repo=None, **kwargs):
-        self.wee = kwargs.get('wee', False)
+        self.wee = kwargs.get('wee', None)
         title = kwargs.get('title')
         version = kwargs.get('version')
         if not version:
@@ -71,7 +71,7 @@ class OntoGraf:
         self.include_pattern = kwargs.get('include_pattern')
         self.exclude_pattern = kwargs.get('exclude_pattern')
 
-        self.superclasses = defaultdict(list)
+        self.superclasses = defaultdict(set)
 
         self.show_shacl = kwargs.get('show_shacl')
         self.shapes = defaultdict(list)
@@ -210,19 +210,20 @@ class OntoGraf:
         for ontology, props in onto_data.items():
             self.node_data[ontology]['ontology'] = ontology
             self.node_data[ontology]['ontologyName'] = self.strip_uri(ontology)
-            for key in set(mapping.values()).union(set(['gist_thingsList'])):
+            for key in set(mapping.values()).union({'gist_thingsList'}):
                 if key != 'imports':
                     self.node_data[ontology][key] = "\\l".join(sorted(props[key])) if key in props else ''
                 else:
                     self.node_data[ontology][key] = props[key] if key in props else []
         return self.node_data
 
-    def create_schema_graf(self, data_dict=None, wee=None):
-        if data_dict is None:
-            data_dict = self.node_data
-        if wee is None:
-            wee = self.wee
-        if wee:
+    def create_schema_graf(self):
+        data_dict = self.node_data
+        wee = self.wee
+        # When 'wee' is not specified at all, it will be None
+        # When 'wee' is for all ontologies, it will be an empty list
+        # Otherwise, it will contain a list of ontology URI patterns
+        if wee is not None and not wee:
             self.graf = pydot.Dot(graph_type='digraph',
                                   label=self.title,
                                   labelloc='t',
@@ -255,7 +256,10 @@ class OntoGraf:
                 annotation_properties = file_data["annotation_propertiesList"]
                 gist_things = file_data["gist_thingsList"]
                 imports = file_data["imports"]
-                if wee:
+                render_compact = wee is not None and (
+                    not wee or any(re.search(pat, ontology) for pat in wee)
+                )
+                if render_compact:
                     node = pydot.Node(ontology_name)
                 else:
                     ontology_info = "{{{}\\l\\l{}|{}|{}|{}|{}|{}}}".format(
@@ -376,6 +380,13 @@ class OntoGraf:
             self.print_progress_bar(len(all_predicates), len(all_predicates),
                                     prefix='Processing predicates:', suffix='Complete', length=50)
 
+        # TODO Apply pruning
+        # self.prune_for_inheritance()
+
+        if self.show_shacl:
+            self.add_shacl_coloring()
+
+    def prune_for_inheritance(self):
         # This is for future functionality
         inheritance_query = """
         prefix owl: <http://www.w3.org/2002/07/owl#>
@@ -393,13 +404,48 @@ class OntoGraf:
           }
           filter (!isblank(?class) && !isblank(?parent))
         }
-        """  # noqa: F841
-        # for inheritance_info in self.select_query(inheritance_query):
-        #     self.superclasses[inheritance_info['class']].append(inheritance_info['parent'])
+        """
+        if self.repo:
+            parents = list(self.select_query(inheritance_query))
+        else:
+            parents = list(self.graph_select_query(inheritance_query))
+
+        for inheritance_info in parents:
+            self.superclasses[inheritance_info['class']].add(inheritance_info['parent'])
+
+        # Determine evaluation order, root classes to leaves
+        remaining_classes = set(self.superclasses.keys())
+        root_classes = set(parent for cls, parents in self.superclasses.items()
+                           for parent in parents
+                           if parent not in remaining_classes)
+        eval_order = list(root_classes)
+        while remaining_classes:
+            next_set = set(cls for cls in remaining_classes
+                           if all(parent in eval_order for parent in self.superclasses[cls]))
+            # Make superclasses transitive
+            for cls in next_set:
+                parents = set(self.superclasses[cls])
+                for parent in parents:
+                    self.superclasses[cls].update(self.superclasses.get(parent, set()))
+            eval_order.extend(next_set)
+            remaining_classes.difference_update(next_set)
+
+        logging.debug('Inheritance evaluation order:\n%s',
+                      "\n".join(f"\t{self.strip_uri(cls)}: {list(self.strip_uri(sup) for sup in self.superclasses[cls])}"
+                                for cls in eval_order))
+
         # TODO Coalesce parent and child class references?
 
-        if self.show_shacl:
-            self.add_shacl_coloring()
+        for cls in reversed(eval_order):
+            if not self.superclasses[cls]:
+                continue
+            super_links = set()
+            for rel, count in self.node_data[cls]['links'].items():
+                # Locate a parent with same link
+                parent = next(parent for parent in self.superclasses[cls]
+                              if parent in self.node_data and
+                              any(p for p, _, t in self.node_data[parent]['links']
+                                  if p == rel[0] and t == rel[2]))
 
     def record_predicate_usage(self, predicate, predicate_str, usage):
         if usage['src'] not in self.node_data:
