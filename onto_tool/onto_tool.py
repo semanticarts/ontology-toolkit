@@ -282,12 +282,16 @@ def generate_graphic(action, onto_files, endpoint, **kwargs):
 
     Keyword Parameters
     ------------------
-    wee : boolean
-        If True, generate a compact ontology graph.
+    wee : list(string)
+        If None, full details for all ontologies (--wee omitted from command line).
+        If empty list (-wee specified with no arguments), all ontologies are rendered compact
+        Otherwise, compact display for any ontologies matching the regular expressions in the list
     outpath : string
         Path of directory where graph will be output.
     version : string
         Version to be used in graphic title.
+    hide: list(string)
+        List of regular expressions to control which classes and/or properties will be hidden from the data graphic.
     include: list(string)
         List of ontology URIs to include for schema graph, or named graphs to consider for data graph.
     include_pattern: list(string)
@@ -1256,7 +1260,7 @@ def main(arguments):
                          limit=args.instance_limit, threshold=args.predicate_threshold,
                          single_graph=args.single_ontology_graphs,
                          wee=args.wee, outpath=args.output, version=args.version,
-                         no_image=args.no_image, title=args.title,
+                         no_image=args.no_image, title=args.title, hide=args.hide,
                          include=args.include, exclude=args.exclude,
                          include_pattern=args.include_pattern,
                          exclude_pattern=args.exclude_pattern,

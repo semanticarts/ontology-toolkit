@@ -131,7 +131,8 @@ usage: onto_tool graphic [-h] [-e ENDPOINT] [--schema | --data]
                          [--include [INCLUDE ...] | --include-pattern
                          [INCLUDE_REGEX ...] | --exclude [EXCLUDE ...] |
                          --exclude-pattern [EXCLUDE_REGEX ...]] [-v VERSION]
-                         [-w [WEE ...]] [--no-image] [-t TITLE]
+                         [-w [WEE [WEE ...]]] [--hide [HIDE [HIDE ...]]]
+                         [--no-image] [-t TITLE]
                          [ontology ...]
 
 positional arguments:
@@ -164,6 +165,9 @@ optional arguments:
                         For ontologies matching the patterns specified, only
                         render the name and import information. If no patterns
                         are specified, applies to all onotologies.
+  --hide [HIDE [HIDE ...]]
+                        When visualizing data, hide classes and properties
+                        matching the regexpatterns specified with this option.
   --no-image            Do not generate PNG image, only .dot output.
   -t TITLE, --title TITLE
                         Title to use for graph. If not supplied, the repo URI

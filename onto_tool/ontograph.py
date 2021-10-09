@@ -32,6 +32,7 @@ from .sparql_utils import create_endpoint, select_query
 class OntoGraf:
     def __init__(self, files, repo=None, **kwargs):
         self.wee = kwargs.get('wee', None)
+        self.hide = kwargs.get('hide')
         title = kwargs.get('title')
         version = kwargs.get('version')
         if not version:
@@ -314,6 +315,9 @@ class OntoGraf:
             print()
         sys.stdout.flush()
 
+    def hidden(self, uri):
+        return any(re.search(pat, uri) for pat in self.hide)
+
     def gather_instance_info(self):
         predicate_query = """
         prefix owl: <http://www.w3.org/2002/07/owl#>
@@ -348,6 +352,11 @@ class OntoGraf:
                 logging.debug('Parsing %s for documentation', filename)
                 self.data.parse(file_path, format=guess_format(file_path))
             all_predicates = list(self.graph_select_query(predicate_query))
+
+        hidden_predicates = set(predicate['predicate'] for predicate in all_predicates
+                                if self.hidden(predicate['predicate']))
+        logging.debug("Hiding predicates: %s", hidden_predicates)
+        all_predicates = [predicate for predicate in all_predicates if predicate['predicate'] not in hidden_predicates]
 
         if not all_predicates:
             logging.warning('No interesting predicates found in %s', self.repo or ' specified files')
@@ -448,6 +457,9 @@ class OntoGraf:
                                   if p == rel[0] and t == rel[2]))
 
     def record_predicate_usage(self, predicate, predicate_str, usage):
+        if self.hidden(usage['src']) or ('tgt' in usage and self.hidden(usage['tgt'])):
+            logging.debug('Hiding %s to %s link', usage['src'], usage['tgt'])
+            return
         if usage['src'] not in self.node_data:
             src = {
                 'label': usage.get('srcLabel'),
@@ -626,6 +638,10 @@ class OntoGraf:
             data_dict = self.node_data
         logging.debug("Node data: %s", data_dict)
         logging.debug("Shape data: %s", self.shapes)
+
+        if not data_dict:
+            logging.warning("No data found with the specified parameters, existing")
+            return
 
         # Determine the maximum number any edge occurs in the data, so the edge widths can be properly scaled
         max_common = max(occurs for class_data in data_dict.values() for occurs in class_data['links'].values())

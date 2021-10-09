@@ -231,7 +231,10 @@ def configure_arg_parser():
     graphic_parser.add_argument('-w', '--wee', nargs="*", default=None,
                                 help="For ontologies matching the patterns specified, only render "
                                      "the name and import information. If no patterns are specified, applies "
-                                     "to all onotologies.")
+                                     "to all ontologies.")
+    graphic_parser.add_argument('--hide', nargs="*", default=[],
+                                help="When visualizing data, hide classes and properties matching the regex"
+                                     "patterns specified with this option.")
     graphic_parser.add_argument("--no-image", action="store_true",
                                 help="Do not generate PNG image, only .dot output.")
     graphic_parser.add_argument("-t", "--title", action="store",
