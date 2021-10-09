@@ -99,7 +99,7 @@ class OntoGraf:
         """Execute SPARQL SELECT query on local data, return results as generator."""
         results = self.data.query(query)
         for result in results:
-            yield dict((str(k), str(v)) for k, v in zip(results.vars, result))
+            yield dict((str(k), str(v) if v is not None else None) for k, v in zip(results.vars, result))
 
     @staticmethod
     def strip_uri(uri):
@@ -462,7 +462,7 @@ class OntoGraf:
             return
         if usage['src'] not in self.node_data:
             src = {
-                'label': usage.get('srcLabel'),
+                'label': usage.get('srcLabel', self.strip_uri(usage['src'])),
                 'links': {},
                 'data': {}
             }
@@ -470,11 +470,13 @@ class OntoGraf:
         else:
             src = self.node_data[usage['src']]
         if usage.get('dt'):
-            src['data'][(predicate, predicate_str, self.strip_uri(usage['dt']))] = int(usage['num'])
+            src['data'][(predicate,
+                         predicate_str or self.strip_uri(predicate),
+                         self.strip_uri(usage['dt']))] = int(usage['num'])
         else:
             if usage['tgt'] not in self.node_data:
                 self.node_data[usage['tgt']] = {
-                    'label': usage.get('tgtLabel'),
+                    'label': usage.get('tgtLabel', self.strip_uri(usage['tgt'])),
                     'links': {},
                     'data': {}
                 }
