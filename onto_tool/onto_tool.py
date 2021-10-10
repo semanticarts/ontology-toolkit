@@ -402,7 +402,7 @@ def __perform_export__(output, output_format, paths, context=None,
                        versioned=versioned_defined_by)
 
     serialized = g.serialize(format=output_format)
-    output.write(serialized.decode(output.encoding))
+    output.write(serialized)
 
 
 class VarDict(dict):
@@ -1238,7 +1238,7 @@ def output_updated_ontology(args, g, onto_file, orig_format, output_format):
                     encoding='utf-8')
     else:
         serialized = g.serialize(format=output_format)
-        args.output.write(serialized.decode(args.output.encoding))
+        args.output.write(serialized)
 
 
 def main(arguments):

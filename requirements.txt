@@ -1,5 +1,5 @@
-rdflib[sparql]>=5.0.0
-pyshacl~=0.14.0
+rdflib>=6.0.0
+pyshacl~=0.17.0
 pydot>=1.4.1
 jinja2>=2.11.2
 markdown>=3.2.1

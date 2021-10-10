@@ -63,6 +63,9 @@ class OntoGraf:
         self.limit = kwargs.get('limit', 500000)
         self.threshold = kwargs.get('threshold', 10)
         self.node_data = {}
+        self.class_names = {}
+        self.inheritance = []
+        self.super_color = "blue"
         self.arrow_color = "darkorange2"
         self.shacl_color = "darkgreen"
         self.arrowhead = "vee"
@@ -97,6 +100,7 @@ class OntoGraf:
 
     def graph_select_query(self, query):
         """Execute SPARQL SELECT query on local data, return results as generator."""
+        logging.debug(f"Local Query\n {query}")
         results = self.data.query(query)
         for result in results:
             yield dict((str(k), str(v) if v is not None else None) for k, v in zip(results.vars, result))
@@ -318,6 +322,11 @@ class OntoGraf:
     def hidden(self, uri):
         return any(re.search(pat, uri) for pat in self.hide)
 
+    def deepest_class(self, class_uris: str):
+        _, deepest = max((self.inheritance.index(cls_uri) if cls_uri in self.inheritance else -1, cls_uri)
+                         for cls_uri in class_uris.split(' '))
+        return deepest
+
     def gather_instance_info(self):
         predicate_query = """
         prefix owl: <http://www.w3.org/2002/07/owl#>
@@ -362,6 +371,8 @@ class OntoGraf:
             logging.warning('No interesting predicates found in %s', self.repo or ' specified files')
             return
 
+        self.build_class_hierarchy()
+
         for count, predicate_row in enumerate(all_predicates):
             predicate = predicate_row['predicate']
             predicate_str = predicate_row['label'] if predicate_row.get('label') \
@@ -389,20 +400,19 @@ class OntoGraf:
             self.print_progress_bar(len(all_predicates), len(all_predicates),
                                     prefix='Processing predicates:', suffix='Complete', length=50)
 
-        # TODO Apply pruning
-        # self.prune_for_inheritance()
+        self.prune_for_inheritance()
 
         if self.show_shacl:
             self.add_shacl_coloring()
 
-    def prune_for_inheritance(self):
-        # This is for future functionality
+    def build_class_hierarchy(self):
         inheritance_query = """
         prefix owl: <http://www.w3.org/2002/07/owl#>
         prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        prefix skos: <http://www.w3.org/2004/02/skos/core#>
 
-        select ?class ?parent where {
+        select distinct ?class ?c_label ?parent ?p_label where {
           {
               ?class rdfs:subClassOf+ ?parent .
           }
@@ -412,6 +422,8 @@ class OntoGraf:
             ?parent a owl:Class
           }
           filter (!isblank(?class) && !isblank(?parent))
+          OPTIONAL { ?class rdfs:label|skos:prefLabel ?c_label }
+          OPTIONAL { ?parent rdfs:label|skos:prefLabel ?p_label }
         }
         """
         if self.repo:
@@ -421,6 +433,10 @@ class OntoGraf:
 
         for inheritance_info in parents:
             self.superclasses[inheritance_info['class']].add(inheritance_info['parent'])
+            self.class_names[inheritance_info['class']] = \
+                inheritance_info.get('c_label') or self.strip_uri(inheritance_info['class'])
+            self.class_names[inheritance_info['parent']] = \
+                inheritance_info.get('p_label') or self.strip_uri(inheritance_info['parent'])
 
         # Determine evaluation order, root classes to leaves
         remaining_classes = set(self.superclasses.keys())
@@ -442,45 +458,67 @@ class OntoGraf:
         logging.debug('Inheritance evaluation order:\n%s',
                       "\n".join(f"\t{self.strip_uri(cls)}: {list(self.strip_uri(sup) for sup in self.superclasses[cls])}"
                                 for cls in eval_order))
+        self.inheritance = eval_order
 
-        # TODO Coalesce parent and child class references?
-
-        for cls in reversed(eval_order):
-            if not self.superclasses[cls]:
+    def prune_for_inheritance(self):
+        for cls in reversed(self.inheritance):
+            if cls not in self.node_data or not self.superclasses[cls]:
                 continue
-            super_links = set()
-            for rel, count in self.node_data[cls]['links'].items():
-                # Locate a parent with same link
-                parent = next(parent for parent in self.superclasses[cls]
-                              if parent in self.node_data and
-                              any(p for p, _, t in self.node_data[parent]['links']
-                                  if p == rel[0] and t == rel[2]))
+            self.merge_with_parent(cls, 'links')
+            self.merge_with_parent(cls, 'data')
+
+    def merge_with_parent(self, cls, link_type):
+        removed = []
+        for link, count in self.node_data[cls][link_type].items():
+            # Locate parents with same link
+            parents_with_link = list(parent for parent in self.superclasses[cls]
+                                     if parent in self.node_data and link in self.node_data[parent][link_type])
+            if not parents_with_link:
+                continue
+            # Move to the most immediate parent, to create proper superclass chains
+            _, max_parent_with_link = max((self.inheritance.index(parent), parent) for parent in parents_with_link)
+            self.node_data[max_parent_with_link][link_type][link] += count
+            self.node_data[cls]['supers'].add(max_parent_with_link)
+            removed.append(link)
+        for r in removed:
+            del self.node_data[cls][link_type][r]
 
     def record_predicate_usage(self, predicate, predicate_str, usage):
-        if self.hidden(usage['src']) or ('tgt' in usage and self.hidden(usage['tgt'])):
-            logging.debug('Hiding %s to %s link', usage['src'], usage['tgt'])
+        src_uri = self.deepest_class(usage['src'])
+        tgt_uri = self.deepest_class(usage['tgt']) if 'tgt' in usage else None
+        if self.hidden(src_uri) or (tgt_uri is not None and self.hidden(tgt_uri)):
+            if tgt_uri is not None:
+                logging.debug('Hiding %s to %s link', src_uri, tgt_uri)
+            else:
+                logging.debug('Hiding %s attribute %s', src_uri, usage['dt'])
             return
-        if usage['src'] not in self.node_data:
+        if src_uri not in self.node_data:
+            if src_uri is None:
+                raise "None src_uri in " + str(usage)
             src = {
-                'label': usage.get('srcLabel', self.strip_uri(usage['src'])),
-                'links': {},
-                'data': {}
+                'label': self.class_names.get(src_uri, self.strip_uri(src_uri)),
+                'links': defaultdict(int),
+                'data': defaultdict(int),
+                'supers': set()
             }
-            self.node_data[usage['src']] = src
+            self.node_data[src_uri] = src
         else:
-            src = self.node_data[usage['src']]
+            src = self.node_data[src_uri]
         if usage.get('dt'):
             src['data'][(predicate,
                          predicate_str or self.strip_uri(predicate),
-                         self.strip_uri(usage['dt']))] = int(usage['num'])
+                         self.strip_uri(usage['dt']))] += int(usage['num'])
         else:
-            if usage['tgt'] not in self.node_data:
-                self.node_data[usage['tgt']] = {
-                    'label': usage.get('tgtLabel', self.strip_uri(usage['tgt'])),
-                    'links': {},
-                    'data': {}
+            if tgt_uri not in self.node_data:
+                if tgt_uri is None:
+                    raise "None src_uri in " + str(usage)
+                self.node_data[tgt_uri] = {
+                    'label': self.class_names.get(tgt_uri, self.strip_uri(tgt_uri)),
+                    'links': defaultdict(int),
+                    'data': defaultdict(int),
+                    'supers': set()
                 }
-            src['links'][(predicate, predicate_str, usage['tgt'])] = int(usage['num'])
+            src['links'][(predicate, predicate_str, tgt_uri)] += int(usage['num'])
 
     def add_shacl_coloring(self):
         shacl_query = """
@@ -507,26 +545,17 @@ class OntoGraf:
                 prefix gist: <https://ontologies.semanticarts.com/gist/>
                 prefix skos: <http://www.w3.org/2004/02/skos/core#>
 
-                select ?src ?srcLabel
-                       ?tgt ?tgtLabel
-                       ?num
-                where {
+                select ?src ?tgt (COUNT(?src) as ?num) where {
                   {
-                    select ?src ?tgt (COUNT(?src) as ?num) where {
-                      {
-                        select ?src ?tgt where {
-                          $pattern
-                          FILTER(!ISBLANK(?s))
-                          ?s a ?src .
-                          FILTER (!STRSTARTS(STR(?src), 'http://www.w3.org/2002/07/owl#'))
-                          ?o a ?tgt .
-                        } LIMIT $limit
-                      }
-                    } group by ?src ?tgt
+                    select (group_concat(?src_c) as ?src) (group_concat(?tgt_c) as ?tgt) where {
+                      $pattern
+                      FILTER(!ISBLANK(?s))
+                      ?s a ?src_c .
+                      FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
+                      ?o a ?tgt_c .
+                    } group by ?s ?o LIMIT $limit
                   }
-                  OPTIONAL { ?src skos:prefLabel|rdfs:label ?srcLabel }
-                  OPTIONAL { ?tgt skos:prefLabel|rdfs:label ?tgtLabel }
-                }
+                } group by ?src ?tgt
                 """
         elif predicate_type == str(OWL.DatatypeProperty):
             type_query = """
@@ -537,25 +566,17 @@ class OntoGraf:
                 prefix gist: <https://ontologies.semanticarts.com/gist/>
                 prefix skos: <http://www.w3.org/2004/02/skos/core#>
 
-                select ?src ?srcLabel
-                       ?dt
-                       ?num
-                where {
+                select ?src ?dt (COUNT(?src) as ?num) where {
                   {
-                    select ?src ?dt (COUNT(?src) as ?num) where {
-                      {
-                        select ?src ?dt where {
-                          $pattern
-                          FILTER(!ISBLANK(?s))
-                          ?s a ?src .
-                          FILTER (!STRSTARTS(STR(?src), 'http://www.w3.org/2002/07/owl#'))
-                          BIND(DATATYPE(?o) as ?dt) .
-                        } LIMIT $limit
-                      }
-                    } group by ?src ?dt
+                    select (group_concat(?src_c) as ?src) (SAMPLE(?dtype) as ?dt) where {
+                      $pattern
+                      FILTER(!ISBLANK(?s) && ISLITERAL(?o))
+                      ?s a ?src_c .
+                      FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
+                      BIND(DATATYPE(?o) as ?dtype) .
+                    } group by ?s LIMIT $limit
                   }
-                  OPTIONAL { ?src skos:prefLabel|rdfs:label ?srcLabel }
-                }
+                } group by ?src ?dt
                 """
         else:
             type_query = """
@@ -566,8 +587,8 @@ class OntoGraf:
                 prefix gist: <https://ontologies.semanticarts.com/gist/>
                 prefix skos: <http://www.w3.org/2004/02/skos/core#>
 
-                select ?src ?srcLabel
-                       ?tgt ?tgtLabel
+                select ?src
+                       ?tgt
                        ?dt
                        ?num
                 where {
@@ -575,36 +596,32 @@ class OntoGraf:
                     {
                       select ?src ?tgt (COUNT(?src) as ?num) where {
                         {
-                          select ?src ?tgt where {
-                            $pattern
-                            FILTER(!ISBLANK(?s))
-                            ?s a ?src .
-                            FILTER (!STRSTARTS(STR(?src), 'http://www.w3.org/2002/07/owl#'))
-                            ?o a ?tgt .
-                          } LIMIT $limit
+                            select (group_concat(?src_c) as ?src) (group_concat(?tgt_c) as ?tgt) where {
+                              $pattern
+                              FILTER(!ISBLANK(?s))
+                              ?s a ?src_c .
+                              FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
+                              ?o a ?tgt_c .
+                            } group by ?s ?o LIMIT $limit
                         }
                       } group by ?src ?tgt
                     }
-                    OPTIONAL { ?src skos:prefLabel|rdfs:label ?srcLabel }
-                    OPTIONAL { ?tgt skos:prefLabel|rdfs:label ?tgtLabel }
                   }
                   UNION
                   {
                     {
                       select ?src ?dt (COUNT(?src) as ?num) where {
                         {
-                          select ?src ?dt where {
-                            $pattern
-                            FILTER(!ISBLANK(?s))
-                            FILTER(isLITERAL(?o))
-                            ?s a ?src .
-                            FILTER (!STRSTARTS(STR(?src), 'http://www.w3.org/2002/07/owl#'))
-                            BIND(DATATYPE(?o) as ?dt) .
-                          } LIMIT $limit
+                            select (group_concat(?src_c) as ?src) (SAMPLE(?dtype) as ?dt) where {
+                              $pattern
+                              FILTER(!ISBLANK(?s) && ISLITERAL(?o))
+                              ?s a ?src_c .
+                              FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
+                              BIND(DATATYPE(?o) as ?dtype) .
+                            } group by ?s LIMIT $limit
                         }
                       } group by ?src ?dt
                     }
-                    OPTIONAL { ?src skos:prefLabel|rdfs:label ?srcLabel }
                   }
                 }
                 """
@@ -685,6 +702,14 @@ class OntoGraf:
                                   penwidth=self.line_width(num, max_common),
                                   color=self.shacl_color if predicate in self.shapes[class_] else self.arrow_color,
                                   arrowhead=self.arrowhead)
+                self.graf.add_edge(edge)
+
+            for super_class in class_data['supers']:
+                edge = pydot.Edge(class_, super_class,
+                                  label='subClassOf',
+                                  penwidth=1,
+                                  color=self.super_color,
+                                  arrowhead='normal')
                 self.graf.add_edge(edge)
 
         self.graf.write(self.outdot)
