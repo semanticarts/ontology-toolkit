@@ -29,6 +29,7 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
+  -k, --insecure        Allow insecure server connections when using SSL
 ```
 
 ## Sub-Commands
@@ -127,13 +128,12 @@ usage: onto_tool graphic [-h] [-e ENDPOINT] [--schema | --data]
                          [--single-ontology-graphs] [--debug] [-o OUTPUT]
                          [--show-shacl] [--instance-limit INSTANCE_LIMIT]
                          [--predicate-threshold PREDICATE_THRESHOLD]
-                         [--include [INCLUDE [INCLUDE ...]] |
-                         --include-pattern [INCLUDE_REGEX [INCLUDE_REGEX ...]]
-                         | --exclude [EXCLUDE [EXCLUDE ...]] |
-                         --exclude-pattern
-                         [EXCLUDE_REGEX [EXCLUDE_REGEX ...]]] [-v VERSION]
-                         [-w] [--no-image] [-t TITLE]
-                         [ontology [ontology ...]]
+                         [--include [INCLUDE ...] | --include-pattern
+                         [INCLUDE_REGEX ...] | --exclude [EXCLUDE ...] |
+                         --exclude-pattern [EXCLUDE_REGEX ...]] [-v VERSION]
+                         [-w [WEE [WEE ...]]] [--hide [HIDE [HIDE ...]]]
+                         [--no-image] [-t TITLE]
+                         [ontology ...]
 
 positional arguments:
   ontology              Ontology file, directory or name pattern
@@ -161,8 +161,13 @@ optional arguments:
                         as SPARQL queries.
   -v VERSION, --version VERSION
                         Version to place in graphic
-  -w, --wee             a version of the graphic with only core information
-                        about ontology and imports
+  -w [WEE ...], --wee [WEE ...]
+                        For ontologies matching the patterns specified, only
+                        render the name and import information. If no patterns
+                        are specified, applies to all onotologies.
+  --hide [HIDE [HIDE ...]]
+                        When visualizing data, hide classes and properties
+                        matching the regexpatterns specified with this option.
   --no-image            Do not generate PNG image, only .dot output.
   -t TITLE, --title TITLE
                         Title to use for graph. If not supplied, the repo URI

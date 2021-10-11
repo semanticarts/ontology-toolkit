@@ -26,6 +26,7 @@ def test_sparql_queries():
 
 
 def test_sparql_updates():
+    onto_tool.__suppress_ssl_certificate_check()
     onto_tool.main([
         'bundle', 'tests/bundle/sparql_update.yaml'
     ])

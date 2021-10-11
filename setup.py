@@ -1,11 +1,13 @@
 import setuptools
 
+from onto_tool import VERSION
+
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name="onto_tool",
-    version="1.4.3",
+    version=VERSION,
     author="Boris Pelakh",
     author_email="boris.pelakh@semanticarts.com",
     description="Ontology Maintenance and Release Tool",

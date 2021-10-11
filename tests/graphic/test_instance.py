@@ -17,3 +17,14 @@ def test_local_instance():
         ('"http://example.com/Teacher"', '"http://example.com/School"'),
         ('"http://example.com/Teacher"', '"http://example.com/Student"')
     ]
+
+
+def test_verify_construct(caplog):
+    onto_tool.main([
+                       'graphic', '--data',
+                       '-t', 'Local Instance Data',
+                       '--no-image',
+                       '-o', 'tests/graphic/test_instance'
+                   ] + glob.glob('tests/graphic/*_ontology.ttl'))
+    logs = caplog.text
+    assert 'No data found' in logs
