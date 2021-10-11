@@ -155,7 +155,7 @@ class OntoGraf:
             prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
             prefix gist: <https://ontologies.semanticarts.com/gist/>
 
-            select ?ontology ?entity ?type where {
+            select DISTINCT ?ontology ?entity ?type where {
               graph ?g {
                 ?ontology a owl:Ontology .
                 {
@@ -179,7 +179,7 @@ class OntoGraf:
             prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
             prefix gist: <https://ontologies.semanticarts.com/gist/>
 
-            select ?ontology ?entity ?type where {
+            select DISTINCT ?ontology ?entity ?type where {
               ?ontology a owl:Ontology .
               {
                 ?ontology owl:imports ?entity .
@@ -213,7 +213,7 @@ class OntoGraf:
             self.node_data[ontology]['ontologyName'] = self.strip_uri(ontology)
             for key in set(mapping.values()).union({'gist_thingsList'}):
                 if key != 'imports':
-                    self.node_data[ontology][key] = "\\l".join(sorted(props[key])) if key in props else ''
+                    self.node_data[ontology][key] = "\\l".join(sorted(set(props[key]))) if key in props else ''
                 else:
                     self.node_data[ontology][key] = props[key] if key in props else []
         return self.node_data
