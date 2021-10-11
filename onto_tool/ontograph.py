@@ -642,7 +642,7 @@ class OntoGraf:
         logging.debug("Shape data: %s", self.shapes)
 
         if not data_dict:
-            logging.warning("No data found with the specified parameters, existing")
+            logging.warning("No data found with the specified parameters.")
             return
 
         # Determine the maximum number any edge occurs in the data, so the edge widths can be properly scaled

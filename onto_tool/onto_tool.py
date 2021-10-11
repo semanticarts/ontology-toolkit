@@ -21,6 +21,8 @@ from rdflib.plugins.sparql import prepareQuery
 from SPARQLWrapper import TURTLE
 import pyshacl
 from pyparsing import ParseException
+
+import onto_tool
 from .command_line import configure_arg_parser
 from .ontograph import OntoGraf
 from .mdutils import Markdown2HTML
@@ -1243,10 +1245,14 @@ def main(arguments):
     """Do the thing."""
     args = configure_arg_parser().parse_args(args=arguments)
 
-    if args.debug:
+    if 'debug' in args and args.debug:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
+
+    if args.version:
+        logging.info("onto-tool v%s", onto_tool.VERSION)
+        return
 
     if args.insecure:
         __suppress_ssl_certificate_check()

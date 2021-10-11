@@ -61,6 +61,8 @@ def configure_arg_parser():
     parser = argparse.ArgumentParser(description='Ontology toolkit.')
     parser.add_argument('-k', '--insecure', action="store_true",
                         help="Allow insecure server connections when using SSL")
+    parser.add_argument('-v', '--version', action="store_true",
+                        help="Report onto-tool version and exit")
     subparsers = parser.add_subparsers(help='sub-command help', dest='command')
 
     update_parser = subparsers.add_parser('update',
