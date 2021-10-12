@@ -64,6 +64,7 @@ class OntoGraf:
         self.threshold = kwargs.get('threshold', 10)
         self.node_data = {}
         self.class_names = {}
+        self.class_counts = defaultdict(int)
         self.inheritance = []
         self.super_color = "blue"
         self.arrow_color = "darkorange2"
@@ -460,6 +461,14 @@ class OntoGraf:
                                 for cls in eval_order))
         self.inheritance = eval_order
 
+        class_query = self.create_class_count_query(self.limit)
+        if self.repo:
+            class_counts = list(self.select_query(class_query))
+        else:
+            class_counts = list(self.graph_select_query(class_query))
+        for instance_info in class_counts:
+            self.class_counts[self.deepest_class(instance_info['src'])] += int(instance_info['num'])
+
     def prune_for_inheritance(self):
         for cls in reversed(self.inheritance):
             if cls not in self.node_data or not self.superclasses[cls]:
@@ -534,6 +543,30 @@ class OntoGraf:
         shacl_data = self.select_query(shacl_query) if self.repo else self.graph_select_query(shacl_query)
         for row in shacl_data:
             self.shapes[row['class']].append(row['property'])
+
+    def create_class_count_query(self, limit):
+        class_query = """
+            prefix owl: <http://www.w3.org/2002/07/owl#>
+            prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+            prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            prefix gist: <https://ontologies.semanticarts.com/gist/>
+            prefix skos: <http://www.w3.org/2004/02/skos/core#>
+
+            select ?src (COUNT(?src) as ?num) where {
+              {
+                select (group_concat(?o) as ?src) where {
+                  $pattern
+                  FILTER(!ISBLANK(?s))
+                  FILTER (!STRSTARTS(STR(?o), 'http://www.w3.org/2002/07/owl#'))
+                } group by ?s LIMIT $limit
+              }
+            } group by ?src
+            """
+        query_text = Template(class_query).substitute(
+            pattern=self.filtered_graph_pattern(str(RDF.type)),
+            limit=limit)
+        return query_text
 
     def create_predicate_query(self, predicate, predicate_type, limit):
         if predicate_type == str(OWL.ObjectProperty):
@@ -639,6 +672,21 @@ class OntoGraf:
             return OntoGraf.MAX_LINE_WIDTH
         return min(5, max(1, round(log(num_used, pow(graph_max, 1.0/OntoGraf.MAX_LINE_WIDTH)))))
 
+    MAX_FONT_SIZE = 48
+    MIN_FONT_SIZE = 14
+
+    @staticmethod
+    def font_size(num_instances, graph_max):
+        """Scale line width relative to the most commonly occurring edge for the graph"""
+        if num_instances == 0 or graph_max == 1:
+            return OntoGraf.MIN_FONT_SIZE
+        span = OntoGraf.MAX_FONT_SIZE - OntoGraf.MIN_FONT_SIZE
+        try:
+            return OntoGraf.MIN_FONT_SIZE - 1 + min(span, max(1, round(log(num_instances, pow(graph_max, 1.0 / span)))))
+        except ValueError:
+            logging.warning('Failed to determine font size from num=%d max=%d', num_instances, graph_max)
+            return OntoGraf.MIN_FONT_SIZE
+
     def create_instance_graf(self, data_dict=None):
         self.graf = pydot.Dot(graph_type='digraph',
                               label=self.title,
@@ -665,12 +713,17 @@ class OntoGraf:
         # Determine the maximum number any edge occurs in the data, so the edge widths can be properly scaled
         max_common = max(occurs for class_data in data_dict.values() for occurs in class_data['links'].values())
 
+        max_instance = max(self.class_counts.values())
+
         for class_, class_data in data_dict.items():
+            node_font_size = self.font_size(self.class_counts[class_], max_instance)
             if class_data['data']:
                 class_info = \
                     """<<table border="0" cellspacing="0" cellborder="1">
                      <tr>
-                      <td align="center" bgcolor="{label_bg}"><font color="{label_fg}">{class_label}</font></td>
+                      <td align="center" bgcolor="{label_bg}">
+                        <font point-size="{fontsize}" color="{label_fg}">{class_label}
+                        </font></td>
                      </tr>
                      <tr>
                       <td align="center">{attribute_text}</td>
@@ -678,10 +731,12 @@ class OntoGraf:
                     </table>>""".format(
                         label_fg="white" if class_ in self.shapes else "black",
                         label_bg="darkgreen" if class_ in self.shapes else "white",
+                        fontsize=node_font_size,
                         class_label=class_data['label'] if class_data['label'] else self.strip_uri(class_),
                         attribute_text="<br/>".join(
-                            '<font color="{color}">{prop}: {dt}</font>'.format(
+                            '<font point-size="{fontsize}" color="{color}">{prop}: {dt}</font>'.format(
                                 color="darkgreen" if predicate in self.shapes[class_] else "black",
+                                fontsize=round(node_font_size * 2/3),
                                 prop=prop, dt=dt) for predicate, prop, dt in class_data['data'].keys()))
                 node = pydot.Node(name='"' + class_ + '"',
                                   margin="0",
@@ -690,6 +745,7 @@ class OntoGraf:
                 node = pydot.Node(name='"' + class_ + '"',
                                   label=class_data['label'] if class_data['label'] else self.strip_uri(class_),
                                   style='filled',
+                                  fontsize=node_font_size,
                                   fillcolor="darkgreen" if class_ in self.shapes else "white",
                                   fontcolor="white" if class_ in self.shapes else "black")
 
@@ -706,7 +762,6 @@ class OntoGraf:
 
             for super_class in class_data['supers']:
                 edge = pydot.Edge(class_, super_class,
-                                  label='subClassOf',
                                   penwidth=1,
                                   color=self.super_color,
                                   arrowhead='normal')
