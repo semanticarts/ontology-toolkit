@@ -462,7 +462,7 @@ def __bundle_file_list(action, variables, ignore_target=False):
         if not ignore_target:
             tgt_dir = action['target'].format(**variables)
             if not isdir(tgt_dir):
-                os.mkdir(tgt_dir)
+                os.makedirs(tgt_dir)
         else:
             # There are times when
             tgt_dir = None
@@ -649,6 +649,59 @@ def __bundle_graph__(action, variables):
     og.create_schema_graf()
 
 
+def __bundle_local_sparql_each__(action, variables, output, queries):
+    for in_out in __bundle_file_list(action, variables):
+        g = Graph()
+        onto_file = in_out['inputFile']
+        parse_rdf(g, onto_file)
+        logging.debug("Input graph size for %s is %d", in_out['inputFile'], len(g))
+
+        updated = False
+        for query_file, query_text in queries:
+            logging.debug("Applying %s to %s", query_file, in_out['inputFile'])
+            parsed_update = None
+            parsed_query = None
+            try:
+                parsed_update = __parse_update_query__(query_text)
+            except ParseException:
+                # Not a update
+                parsed_query = prepareQuery(query_text)
+
+            if parsed_update:
+                g.update(parsed_update)
+                __transfer_query_prefixes__(g, parsed_update)
+                updated = True
+            else:
+                results = g.query(
+                    parsed_query,
+                    initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
+
+                if results.vars is not None:
+                    # SELECT Query
+                    select_output = __determine_output_file_name__(in_out['outputFile'],
+                                                                   queries, query_file, suffix='csv')
+                    with open(select_output, 'w') as csv_file:
+                        __serialize_select_results__(csv_file, results)
+
+                elif results.graph is not None:
+                    # CONSTRUCT Query
+                    __transfer_query_prefixes__(results.graph, parsed_query)
+                    rdf_format, suffix = __determine_format_and_suffix(action)
+                    construct_output = __determine_output_file_name__(in_out['outputFile'],
+                                                                      queries, query_file, suffix=suffix)
+                    results.graph.serialize(destination=construct_output, format=rdf_format, encoding='utf-8')
+                else:
+                    raise Exception('Unknown query type: ' + query_text)
+
+        if updated:
+            if 'format' in action:
+                rdf_format = 'pretty-xml' if action['format'] == 'xml' else action['format']
+            else:
+                rdf_format = 'turtle'
+            logging.debug("Saving updated RDF to %s", in_out['outputFile'])
+            g.serialize(destination=in_out['outputFile'], format=rdf_format, encoding='utf-8')
+
+
 def __bundle_local_sparql__(action, variables, output, queries):
     g = __build_graph_from_inputs__(action, variables)
     updated = False
@@ -694,8 +747,13 @@ def __bundle_local_sparql__(action, variables, output, queries):
 
 
 def __transfer_query_prefixes__(g, parsed_update):
-    for prefix, uri in parsed_update.prologue.namespace_manager.namespaces():
-        g.bind(prefix, uri)
+    if isinstance(parsed_update, list):
+        for update in parsed_update:
+            for prefix, uri in update.prologue.namespace_manager.namespaces():
+                g.bind(prefix, uri)
+    else:
+        for prefix, uri in parsed_update.prologue.namespace_manager.namespaces():
+            g.bind(prefix, uri)
 
 
 def __determine_format_and_suffix(action: dict) -> tuple:
@@ -753,7 +811,10 @@ def __bundle_sparql__(action, variables):
     if 'endpoint' in action:
         __bundle_endpoint_sparql__(action, variables, output, queries)
     else:
-        __bundle_local_sparql__(action, variables, output, queries)
+        if 'eachFile' in action and action['eachFile']:
+            __bundle_local_sparql_each__(action, variables, output, queries)
+        else:
+            __bundle_local_sparql__(action, variables, output, queries)
 
 
 def __serialize_select_results__(output, results):
@@ -927,7 +988,7 @@ def __process_construct_validation__(output, fail_on_warning, stop_on_fail, quer
             # Treat 'target' as directory.
             target_dir = output.format(**variables)
             if not isdir(target_dir):
-                os.mkdir(target_dir)
+                os.makedirs(target_dir)
             base, _ = splitext(basename(query_file))
             construct_output = join(target_dir, base + '.ttl')
         else:
@@ -1156,7 +1217,7 @@ def bundle_ontology(command_line_variables, bundle_path):
         elif action['action'] == 'mkdir':
             path = action['directory'].format(**substituted)
             if not isdir(path):
-                os.mkdir(path)
+                os.makedirs(path)
         elif action['action'] in BUNDLE_ACTIONS:
             BUNDLE_ACTIONS[action['action']](action, substituted)
         else:
