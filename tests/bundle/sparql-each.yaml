@@ -1,0 +1,64 @@
+bundle: test
+variables:
+  # Using inputs form tests/graphic as they offer convenient patters
+  input: "tests/graphic"
+  output: "tests/bundle"
+actions:
+  - action: 'mkdir'
+    directory: "{output}/each/construct"
+  - action: 'sparql'
+    message: "Multi-file processing with CONSTRUCT"
+    eachFile: true
+    source: '{input}'
+    includes:
+      - '*_ontology.ttl'
+    target: "{output}/each/construct"
+    query: >
+      prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      prefix skos: <http://www.w3.org/2004/02/skos/core#>
+      construct {{
+        ?s skos:prefLabel ?label
+      }}
+      WHERE {{
+        ?s rdfs:label ?label .
+      }}
+  - action: 'mkdir'
+    directory: "{output}/each/select"
+  - action: 'sparql'
+    message: "Multi-file processing with SELECT"
+    eachFile: true
+    source: '{input}'
+    includes:
+      - '*_ontology.ttl'
+    target: "{output}/each/select"
+    rename:
+      from: "(.*)\\.ttl"
+      to: "\\g<1>.csv"
+    query: >
+      prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      prefix skos: <http://www.w3.org/2004/02/skos/core#>
+      select ?label
+      WHERE {{
+        ?s rdfs:label ?label .
+      }} order by ?label
+  - action: 'mkdir'
+    directory: "{output}/each/update"
+  - action: 'sparql'
+    message: "Multi-file processing with UPDATE"
+    eachFile: true
+    source: '{input}'
+    includes:
+      - '*_ontology.ttl'
+    target: "{output}/each/update"
+    query: >
+      prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      prefix skos: <http://www.w3.org/2004/02/skos/core#>
+      delete {{
+        ?s rdfs:label ?label
+      }}
+      insert {{
+        ?s skos:prefLabel ?label
+      }}
+      WHERE {{
+        ?s rdfs:label ?label .
+      }}

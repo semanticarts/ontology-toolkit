@@ -1,7 +1,7 @@
 from onto_tool import onto_tool
 import csv
 from rdflib import Graph, URIRef, Literal
-from rdflib.namespace import SKOS
+from rdflib.namespace import RDFS, SKOS
 
 
 def lists_equal(list_one, list_two):
@@ -47,3 +47,42 @@ def test_sparql_updates():
     assert lists_equal([(URIRef('http://example.com/John'), Literal('John Johnson')),
                         (URIRef('http://example.com/Jane'), Literal('Jane Johnson'))],
                        labels)
+
+
+def test_each_file():
+    onto_tool.main([
+        'bundle', 'tests/bundle/sparql-each.yaml'
+    ])
+
+    # Verify CONSTRUCT
+    constructed_graph = Graph()
+    constructed_graph.parse('tests/bundle/each/construct/upper_ontology.ttl', format='turtle')
+    labels = list(constructed_graph.subject_objects(SKOS.prefLabel))
+    assert len(labels) == 5
+    constructed_graph = Graph()
+    constructed_graph.parse('tests/bundle/each/construct/domain_ontology.ttl', format='turtle')
+    labels = list(constructed_graph.subject_objects(SKOS.prefLabel))
+    assert len(labels) == 6
+
+    # Verify SELECT
+    with open('tests/bundle/each/select/upper_ontology.csv') as csvfile:
+        actual = list(row['label'] for row in csv.DictReader(csvfile))
+    expected = ["Person", "Upper Ontology", "has phone number", "is friend of", "is private"]
+    assert actual == expected
+    with open('tests/bundle/each/select/domain_ontology.csv') as csvfile:
+        actual = list(row['label'] for row in csv.DictReader(csvfile))
+    expected = ["Domain Ontology", "School", "Student", "Teacher", "teaches", "works for"]
+    assert actual == expected
+
+    # Verify UPDATE
+    assert actual == expected
+    constructed_graph = Graph()
+    constructed_graph.parse('tests/bundle/each/update/upper_ontology.ttl', format='turtle')
+    labels = list(constructed_graph.subject_objects(SKOS.prefLabel))
+    assert len(labels) == 5
+    assert not list(constructed_graph.subject_objects(RDFS.label))
+    constructed_graph = Graph()
+    constructed_graph.parse('tests/bundle/each/update/domain_ontology.ttl', format='turtle')
+    labels = list(constructed_graph.subject_objects(SKOS.prefLabel))
+    assert len(labels) == 6
+    assert not list(constructed_graph.subject_objects(RDFS.label))

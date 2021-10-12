@@ -327,6 +327,8 @@ properties:
                       $ref: '#/definitions/non_empty_string'
                     includes:
                       $ref: '#/definitions/include_list'
+                    eachFile:
+                      type: boolean
                     format:
                       type: string
                       enum:
