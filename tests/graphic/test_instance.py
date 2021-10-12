@@ -31,15 +31,15 @@ def test_inheritance():
                        'tests/graphic/inheritance_hierarchy.ttl'
                    ])
     (instance_graph,) = pydot.graph_from_dot_file('tests/graphic/test_inheritance.dot')
-    edges = list(sorted((e.get_source(), e.get_label(), e.get_destination()) for e in instance_graph.get_edges()))
+    edges = list(sorted((e.get_source(), e.get_label() or '', e.get_destination()) for e in instance_graph.get_edges()))
     assert edges == [
         ('"http://example.org/Person"', 'memberOf', '"http://example.org/Organization"'),
+        ('"http://example.org/Professor"', '', '"http://example.org/Person"'),
         ('"http://example.org/Professor"', 'memberOf', '"http://example.org/SocialClub"'),
         ('"http://example.org/Professor"', 'residesAt', '"http://example.org/SingleFamilyHome"'),
-        ('"http://example.org/Professor"', 'subClassOf', '"http://example.org/Person"'),
+        ('"http://example.org/Student"', '', '"http://example.org/Person"'),
         ('"http://example.org/Student"', 'memberOf', '"http://example.org/Fraternity"'),
-        ('"http://example.org/Student"', 'residesAt', '"http://example.org/Apartment"'),
-        ('"http://example.org/Student"', 'subClassOf', '"http://example.org/Person"')
+        ('"http://example.org/Student"', 'residesAt', '"http://example.org/Apartment"')
     ]
     assert 'age' in instance_graph.get_node('"http://example.org/Person"')[0].get_label()
     assert 'age' not in instance_graph.get_node('"http://example.org/Student"')[0].get_label()
