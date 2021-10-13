@@ -385,6 +385,33 @@ emitted as a `INFO`-level log message prior to the execution of the action.
   stored as either Turtle, RDF/XML or N-Triples, depending on the `format` option (`turtle`, `xml`, or `nt`).
       Update queries will alter the input data in place, and the resulting
       graph will be output in the specified format.
+    * `UPDATE` queries executed on local files will modify the in-memory graph and then serialize the
+      resulting graph to the `target`.
+    * The default functionality is to combine all RDF sources specified via `includes`
+      and execute queries on the resulting graph. However, if `eachFile: true` is added,
+      all queries will be applied to each source file separately, and will produce a 
+      separate output file. In this case, `target` will be treated as a directory, and
+      the `rename` option should be used when needed to construct the output file names. For example, the following
+      action extracts the labels out of each RDF file into a separate CSV with matching names:
+      ```yaml
+      - action: 'sparql'
+        message: "Multi-file processing with SELECT"
+        eachFile: true
+        source: '{input}'
+        includes:
+          - '*_ontology.ttl'
+        target: "{output}/each/select"
+        rename:
+          from: "(.*)\\.ttl"
+          to: "\\g<1>.csv"
+        query: >
+          prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+          prefix skos: <http://www.w3.org/2004/02/skos/core#>
+          select ?label
+          WHERE {{
+            ?s rdfs:label ?label .
+          }} order by ?label
+      ```
     * As an alternative to operating on local RDF specified via 'source', a query can
       be executed on a triple store by specifying an `endpoint`, which must
       contain a `query_uri`, and can optionally specify `user`/`password` which will
