@@ -50,6 +50,7 @@ class OntoGraf:
         self.data = None
         self.no_image = kwargs.get('no_image', False)
         self.single_graph = kwargs.get('single_graph', False)
+        self.concentrate_links = kwargs.get('concentrate_links')
 
         outpath = kwargs.get('outpath', '.')
         self.outpath = outpath
@@ -263,7 +264,7 @@ class OntoGraf:
                 gist_things = file_data["gist_thingsList"]
                 imports = file_data["imports"]
                 render_compact = wee is not None and (
-                    not wee or any(re.search(pat, ontology) for pat in wee)
+                        not wee or any(re.search(pat, ontology) for pat in wee)
                 )
                 if render_compact:
                     node = pydot.Node(ontology_name)
@@ -391,7 +392,7 @@ class OntoGraf:
                 predicate_usage = list(self.graph_select_query(query_text))
             logging.debug("%s items returned for %s", len(predicate_usage), predicate)
             for usage in predicate_usage:
-                if 'src' not in usage or int(usage.get('num', 0)) < self.threshold:
+                if 'src' not in usage or usage['src'] is None or int(usage.get('num', 0)) < self.threshold:
                     continue
                 self.record_predicate_usage(predicate, predicate_str, usage)
 
@@ -457,8 +458,9 @@ class OntoGraf:
             remaining_classes.difference_update(next_set)
 
         logging.debug('Inheritance evaluation order:\n%s',
-                      "\n".join(f"\t{self.strip_uri(cls)}: {list(self.strip_uri(sup) for sup in self.superclasses[cls])}"
-                                for cls in eval_order))
+                      "\n".join(
+                          f"\t{self.strip_uri(cls)}: {list(self.strip_uri(sup) for sup in self.superclasses[cls])}"
+                          for cls in eval_order))
         self.inheritance = eval_order
 
         class_query = self.create_class_count_query(self.limit)
@@ -663,6 +665,7 @@ class OntoGraf:
             limit=limit)
         return query_text
 
+    MIN_LINE_WIDTH = 1
     MAX_LINE_WIDTH = 5
 
     @staticmethod
@@ -670,9 +673,17 @@ class OntoGraf:
         """Scale line width relative to the most commonly occurring edge for the graph"""
         if graph_max == 1:
             return OntoGraf.MAX_LINE_WIDTH
-        return min(5, max(1, round(log(num_used, pow(graph_max, 1.0/OntoGraf.MAX_LINE_WIDTH)))))
+        if num_used == 0:
+            return OntoGraf.MIN_LINE_WIDTH
+        try:
+            return min(OntoGraf.MAX_LINE_WIDTH,
+                       max(OntoGraf.MIN_LINE_WIDTH,
+                           round(log(num_used, pow(graph_max, 1.0 / OntoGraf.MAX_LINE_WIDTH)))))
+        except ValueError:
+            logging.warning('Failed to determine line width from num=%d max=%d', num_used, graph_max)
+            return OntoGraf.MIN_LINE_WIDTH
 
-    MAX_FONT_SIZE = 48
+    MAX_FONT_SIZE = 24
     MIN_FONT_SIZE = 14
 
     @staticmethod
@@ -717,14 +728,12 @@ class OntoGraf:
 
         for class_, class_data in data_dict.items():
             node_font_size = self.font_size(self.class_counts[class_], max_instance)
+            node_line_width = self.line_width(self.class_counts[class_], max_instance)
             if class_data['data']:
                 class_info = \
-                    """<<table border="0" cellspacing="0" cellborder="1">
+                    """<<table color="black" border="{line_width}" cellspacing="0" cellborder="1">
                      <tr>
-                      <td align="center" bgcolor="{label_bg}">
-                        <font point-size="{fontsize}" color="{label_fg}">{class_label}
-                        </font></td>
-                     </tr>
+                      <td align="center" bgcolor="{label_bg}"><font point-size="{fontsize}" color="{label_fg}">{class_label}</font></td></tr>
                      <tr>
                       <td align="center">{attribute_text}</td>
                      </tr>
@@ -732,11 +741,12 @@ class OntoGraf:
                         label_fg="white" if class_ in self.shapes else "black",
                         label_bg="darkgreen" if class_ in self.shapes else "white",
                         fontsize=node_font_size,
+                        line_width=node_line_width,
                         class_label=class_data['label'] if class_data['label'] else self.strip_uri(class_),
                         attribute_text="<br/>".join(
                             '<font point-size="{fontsize}" color="{color}">{prop}: {dt}</font>'.format(
                                 color="darkgreen" if predicate in self.shapes[class_] else "black",
-                                fontsize=round(node_font_size * 2/3),
+                                fontsize=round(node_font_size * 2 / 3),
                                 prop=prop, dt=dt) for predicate, prop, dt in class_data['data'].keys()))
                 node = pydot.Node(name='"' + class_ + '"',
                                   margin="0",
@@ -746,19 +756,54 @@ class OntoGraf:
                                   label=class_data['label'] if class_data['label'] else self.strip_uri(class_),
                                   style='filled',
                                   fontsize=node_font_size,
+                                  penwidth=node_line_width,
+                                  color="black",
                                   fillcolor="darkgreen" if class_ in self.shapes else "white",
                                   fontcolor="white" if class_ in self.shapes else "black")
 
             self.graf.add_node(node)
 
+            by_predicate = defaultdict(set)
+            if self.concentrate_links != 0:
+                for link in class_data['links']:
+                    predicate, _, target = link
+                    # Don't concentrate self-links
+                    if class_ != target:
+                        by_predicate[predicate].add(link)
+
+            compacted_links = set(predicate for predicate, links in by_predicate.items()
+                                  if len(links) >= self.concentrate_links)
+
             for link, num in class_data['links'].items():
                 predicate, predicate_str, target = link
+                if predicate in compacted_links and target != class_:
+                    continue
                 edge = pydot.Edge(class_, target,
                                   label=predicate_str,
                                   penwidth=self.line_width(num, max_common),
                                   color=self.shacl_color if predicate in self.shapes[class_] else self.arrow_color,
                                   arrowhead=self.arrowhead)
                 self.graf.add_edge(edge)
+
+            for predicate in compacted_links:
+                links = by_predicate[predicate]
+                shared_node_id = class_ + '_' + predicate
+                shared_node = pydot.Node(name='"' + shared_node_id + '"', shape='point', color="black")
+                self.graf.add_node(shared_node)
+                total_count = sum(class_data['links'][link] for link in links)
+                edge_color = self.shacl_color if predicate in self.shapes[class_] else self.arrow_color
+                predicate_label = next(l for l in links)[1]
+                self.graf.add_edge(
+                    pydot.Edge(class_, shared_node_id,
+                               label=predicate_label,
+                               penwidth=self.line_width(total_count, max_common), color=edge_color))
+                for link in links:
+                    _, _, target = link
+                    edge = pydot.Edge(shared_node_id, target,
+                                      penwidth=self.line_width(class_data['links'][link], max_common),
+                                      color=edge_color,
+                                      arrowhead=self.arrowhead)
+                    self.graf.add_edge(edge)
 
             for super_class in class_data['supers']:
                 edge = pydot.Edge(class_, super_class,

@@ -54,3 +54,29 @@ def test_verify_construct(caplog):
                    ] + glob.glob('tests/graphic/*_ontology.ttl'))
     logs = caplog.text
     assert 'No data found' in logs
+
+
+def test_concentration():
+    # First, with concentration
+    onto_tool.main([
+        'graphic', '--predicate-threshold', '0', '--data',
+        '--debug',
+        '-t', 'Looney Tunes',
+        '--no-image',
+        '-o', 'tests/graphic/concentration',
+        'tests/graphic/concentration.ttl'
+    ])
+    (instance_graph,) = pydot.graph_from_dot_file('tests/graphic/concentration.dot')
+    assert 1 == sum(1 for e in instance_graph.get_edges() if e.get_label() == 'playsWith')
+
+    # Then, without
+    onto_tool.main([
+        'graphic', '--predicate-threshold', '0', '--data',
+        '-t', 'Looney Tunes',
+        '--no-image',
+        '--link-concentrator-threshold', '0',
+        '-o', 'tests/graphic/concentration',
+        'tests/graphic/concentration.ttl'
+    ])
+    (instance_graph,) = pydot.graph_from_dot_file('tests/graphic/concentration.dot')
+    assert 4 == sum(1 for e in instance_graph.get_edges() if e.get_label() == 'playsWith')
