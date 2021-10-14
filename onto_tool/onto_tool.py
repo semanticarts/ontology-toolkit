@@ -306,6 +306,9 @@ def generate_graphic(action, onto_files, endpoint, **kwargs):
         named graphs are matched for exclusion from a data graph.
     show_shacl: boolean
         If True, attempt to detect SHACL shapes matching classes and properties.
+    concentrate_links: int
+        When the number links originating from the same class that share a single predicate exceed this threshold,
+        use more compact display. Setting the value to 0 disables this behavior.
 
     Returns
     -------
@@ -1328,6 +1331,7 @@ def main(arguments):
                          single_graph=args.single_ontology_graphs,
                          wee=args.wee, outpath=args.output, version=args.version,
                          no_image=args.no_image, title=args.title, hide=args.hide,
+                         concentrate_links=args.link_concentrator_threshold,
                          include=args.include, exclude=args.exclude,
                          include_pattern=args.include_pattern,
                          exclude_pattern=args.exclude_pattern,

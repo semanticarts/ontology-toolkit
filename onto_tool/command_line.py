@@ -190,6 +190,10 @@ def configure_arg_parser():
                                      " SHACL shapes and colors them green on the graph. This detection relies"
                                      " on the presence of sh:targetClass targeting, and can be confused by"
                                      " complex logical shapes or Advanced SHACL features such as SPARQL queries.")
+    graphic_parser.add_argument("--link-concentrator-threshold", type=int, default=3,
+                                help="When the number links originating from the same class that share a "
+                                     "single predicate exceed this threshold (default 10), use more compact "
+                                     "display. Setting the value to 0 disables this behavior.")
     sampling_limits = graphic_parser.add_argument_group(title='Sampling Limits')
     sampling_limits.add_argument("--instance-limit", type=int, default=500000,
                                  help="Specify a limit on how many triples to consider that use any one"

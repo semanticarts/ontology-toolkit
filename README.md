@@ -126,13 +126,15 @@ Graphics are exported both as ```png``` files and also as a ```dot``` file.  Thi
 ```
 usage: onto_tool graphic [-h] [-e ENDPOINT] [--schema | --data]
                          [--single-ontology-graphs] [--debug] [-o OUTPUT]
-                         [--show-shacl] [--instance-limit INSTANCE_LIMIT]
+                         [--show-shacl]
+                         [--link-concentrator-threshold LINK_CONCENTRATOR_THRESHOLD]
+                         [--instance-limit INSTANCE_LIMIT]
                          [--predicate-threshold PREDICATE_THRESHOLD]
                          [--include [INCLUDE ...] | --include-pattern
                          [INCLUDE_REGEX ...] | --exclude [EXCLUDE ...] |
                          --exclude-pattern [EXCLUDE_REGEX ...]] [-v VERSION]
-                         [-w [WEE [WEE ...]]] [--hide [HIDE [HIDE ...]]]
-                         [--no-image] [-t TITLE]
+                         [-w [WEE ...]] [--hide [HIDE ...]] [--no-image]
+                         [-t TITLE]
                          [ontology ...]
 
 positional arguments:
@@ -159,6 +161,11 @@ optional arguments:
                         sh:targetClass targeting, and can be confused by
                         complex logical shapes or Advanced SHACL features such
                         as SPARQL queries.
+  --link-concentrator-threshold LINK_CONCENTRATOR_THRESHOLD
+                        When the number links originating from the same class
+                        that share a single predicate exceed this threshold
+                        (default 10), use more compact display. Setting the
+                        value to 0 disables this behavior.
   -v VERSION, --version VERSION
                         Version to place in graphic
   -w [WEE ...], --wee [WEE ...]
