@@ -18,7 +18,6 @@ setuptools.setup(
     install_requires=[
         'pyparsing==2.4.7',
         'rdflib~=6.0.0',
-        'pyshacl',
         'pydot',
         'jinja2',
         'markdown',
