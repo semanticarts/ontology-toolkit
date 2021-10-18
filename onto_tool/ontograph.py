@@ -339,8 +339,12 @@ class OntoGraf:
         prefix skos: <http://www.w3.org/2004/02/skos/core#>
 
         select distinct ?predicate ?label ?type where {
-          ?s ?predicate ?o
-          FILTER(?predicate NOT IN (rdf:type, skos:prefLabel, skos:definition))
+          {
+            select distinct ?predicate where {
+              ?s ?predicate ?o
+              FILTER(?predicate NOT IN (rdf:type, rdfs:label, skos:prefLabel, skos:altLabel, skos:definition))
+            }
+          }
           FILTER (!STRSTARTS(STR(?predicate), 'http://www.w3.org/2002/07/owl#'))
           FILTER (!STRSTARTS(STR(?predicate), 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'))
           FILTER (!STRSTARTS(STR(?predicate), 'http://www.w3.org/2000/01/rdf-schema#'))
@@ -416,7 +420,7 @@ class OntoGraf:
 
         select distinct ?class ?c_label ?parent ?p_label where {
           {
-              ?class rdfs:subClassOf+ ?parent .
+              ?class rdfs:subClassOf ?parent .
           }
           UNION
           {
@@ -557,7 +561,7 @@ class OntoGraf:
 
             select ?src (COUNT(?src) as ?num) where {
               {
-                select (group_concat(?o) as ?src) where {
+                select (group_concat(?o;separator=' ') as ?src) where {
                   $pattern
                   FILTER(!ISBLANK(?s))
                   FILTER (!STRSTARTS(STR(?o), 'http://www.w3.org/2002/07/owl#'))
@@ -582,7 +586,7 @@ class OntoGraf:
 
                 select ?src ?tgt (COUNT(?src) as ?num) where {
                   {
-                    select (group_concat(?src_c) as ?src) (group_concat(?tgt_c) as ?tgt) where {
+                    select (group_concat(?src_c;separator=' ') as ?src) (group_concat(?tgt_c;separator=' ') as ?tgt) where {
                       $pattern
                       FILTER(!ISBLANK(?s))
                       ?s a ?src_c .
@@ -603,7 +607,7 @@ class OntoGraf:
 
                 select ?src ?dt (COUNT(?src) as ?num) where {
                   {
-                    select (group_concat(?src_c) as ?src) (SAMPLE(?dtype) as ?dt) where {
+                    select (group_concat(?src_c;separator=' ') as ?src) (SAMPLE(?dtype) as ?dt) where {
                       $pattern
                       FILTER(!ISBLANK(?s) && ISLITERAL(?o))
                       ?s a ?src_c .
@@ -631,7 +635,7 @@ class OntoGraf:
                     {
                       select ?src ?tgt (COUNT(?src) as ?num) where {
                         {
-                            select (group_concat(?src_c) as ?src) (group_concat(?tgt_c) as ?tgt) where {
+                            select (group_concat(?src_c;separator=' ') as ?src) (group_concat(?tgt_c;separator=' ') as ?tgt) where {
                               $pattern
                               FILTER(!ISBLANK(?s))
                               ?s a ?src_c .
@@ -647,7 +651,7 @@ class OntoGraf:
                     {
                       select ?src ?dt (COUNT(?src) as ?num) where {
                         {
-                            select (group_concat(?src_c) as ?src) (SAMPLE(?dtype) as ?dt) where {
+                            select (group_concat(?src_c;separator=' ') as ?src) (SAMPLE(?dtype) as ?dt) where {
                               $pattern
                               FILTER(!ISBLANK(?s) && ISLITERAL(?o))
                               ?s a ?src_c .

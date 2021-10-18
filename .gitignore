@@ -1,5 +1,6 @@
 # Python virtual env
 venv/
+test_env/
 __pycache__/
 
 # PyLint
@@ -11,3 +12,4 @@ __pycache__/
 .coverage
 .idea/
 dist/
+onto_tool.egg-info/
