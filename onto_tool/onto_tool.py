@@ -292,6 +292,8 @@ def generate_graphic(action, onto_files, endpoint, **kwargs):
         Path of directory where graph will be output.
     version : string
         Version to be used in graphic title.
+    label_language: string
+        When multiple language labels are present, use this one.
     hide: list(string)
         List of regular expressions to control which classes and/or properties will be hidden from the data graphic.
     include: list(string)
@@ -1331,6 +1333,7 @@ def main(arguments):
                          single_graph=args.single_ontology_graphs,
                          wee=args.wee, outpath=args.output, version=args.version,
                          no_image=args.no_image, title=args.title, hide=args.hide,
+                         label_language=args.label_language,
                          concentrate_links=args.link_concentrator_threshold,
                          include=args.include, exclude=args.exclude,
                          include_pattern=args.include_pattern,

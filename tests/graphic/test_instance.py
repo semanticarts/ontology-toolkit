@@ -22,6 +22,34 @@ def test_local_instance():
     ]
 
 
+def test_multi_language():
+    onto_tool.main([
+        'graphic', '--predicate-threshold', '0', '--data',
+        '-t', 'Multi Language Labels',
+        '--no-image',
+        '-o', 'tests/graphic/test_multi_lingual_en',
+        'tests/graphic/multi_language.ttl'
+    ])
+    (instance_graph,) = pydot.graph_from_dot_file('tests/graphic/test_multi_lingual_en.dot')
+    edges = list(sorted((e.get_source(), e.get_label(), e.get_destination()) for e in instance_graph.get_edges()))
+    assert edges == [
+        ('"http://example.com/Person"', 'likes', '"http://example.com/Dessert"')
+    ]
+
+    onto_tool.main([
+        'graphic', '--predicate-threshold', '0', '--data',
+        '-t', 'Multi Language Labels',
+        '--no-image', '--label-language', 'fr',
+        '-o', 'tests/graphic/test_multi_lingual_fr',
+        'tests/graphic/multi_language.ttl'
+    ])
+    (instance_graph,) = pydot.graph_from_dot_file('tests/graphic/test_multi_lingual_fr.dot')
+    edges = list(sorted((e.get_source(), e.get_label(), e.get_destination()) for e in instance_graph.get_edges()))
+    assert edges == [
+        ('"http://example.com/Person"', 'aime', '"http://example.com/Dessert"')
+    ]
+
+
 def test_inheritance():
     onto_tool.main([
                        'graphic', '--predicate-threshold', '0', '--data',

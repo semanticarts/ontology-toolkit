@@ -72,6 +72,8 @@ class OntoGraf:
         self.shacl_color = "darkgreen"
         self.arrowhead = "vee"
 
+        self.label_lang = kwargs.get('label_language', 'en')
+
         self.include = kwargs.get('include')
         self.exclude = kwargs.get('exclude')
         self.include_pattern = kwargs.get('include_pattern')
@@ -330,7 +332,7 @@ class OntoGraf:
         return deepest
 
     def gather_instance_info(self):
-        predicate_query = """
+        predicate_query = Template("""
         prefix owl: <http://www.w3.org/2002/07/owl#>
         prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         prefix xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -350,13 +352,14 @@ class OntoGraf:
           FILTER (!STRSTARTS(STR(?predicate), 'http://www.w3.org/2000/01/rdf-schema#'))
           OPTIONAL {
             ?predicate skos:prefLabel|rdfs:label ?label
+            FILTER(lang(?label) = '$language' || lang(?label) = '')
           }
           OPTIONAL {
             values ?type { owl:DatatypeProperty owl:ObjectProperty }
             ?predicate a ?type
           }
         }
-        """
+        """).substitute(language=self.label_lang)
         self.node_data = {}
         if self.repo:
             all_predicates = list(self.select_query(predicate_query))
@@ -412,7 +415,7 @@ class OntoGraf:
             self.add_shacl_coloring()
 
     def build_class_hierarchy(self):
-        inheritance_query = """
+        inheritance_query = Template("""
         prefix owl: <http://www.w3.org/2002/07/owl#>
         prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -428,10 +431,16 @@ class OntoGraf:
             ?parent a owl:Class
           }
           filter (!isblank(?class) && !isblank(?parent))
-          OPTIONAL { ?class rdfs:label|skos:prefLabel ?c_label }
-          OPTIONAL { ?parent rdfs:label|skos:prefLabel ?p_label }
+          OPTIONAL {
+              ?class rdfs:label|skos:prefLabel ?c_label
+              FILTER(lang(?c_label) = '$language' || lang(?c_label) = '')
+          }
+          OPTIONAL {
+              ?parent rdfs:label|skos:prefLabel ?p_label
+              FILTER(lang(?p_label) = '$language' || lang(?p_label) = '')
+          }
         }
-        """
+        """).substitute(language=self.label_lang)
         if self.repo:
             parents = list(self.select_query(inheritance_query))
         else:
@@ -509,7 +518,7 @@ class OntoGraf:
             return
         if src_uri not in self.node_data:
             if src_uri is None:
-                raise "None src_uri in " + str(usage)
+                raise Exception("None src_uri in " + str(usage))
             src = {
                 'label': self.class_names.get(src_uri, self.strip_uri(src_uri)),
                 'links': defaultdict(int),
@@ -526,7 +535,7 @@ class OntoGraf:
         else:
             if tgt_uri not in self.node_data:
                 if tgt_uri is None:
-                    raise "None src_uri in " + str(usage)
+                    raise Exception("None tgt_uri in " + str(usage))
                 self.node_data[tgt_uri] = {
                     'label': self.class_names.get(tgt_uri, self.strip_uri(tgt_uri)),
                     'links': defaultdict(int),
@@ -607,7 +616,7 @@ class OntoGraf:
 
                 select ?src ?dt (COUNT(?src) as ?num) where {
                   {
-                    select (group_concat(?src_c;separator=' ') as ?src) (SAMPLE(?dtype) as ?dt) where {
+                    select (group_concat(?src_c;separator=' ') as ?src) (SAMPLE(COALESCE(?dtype, xsd:string)) as ?dt) where {
                       $pattern
                       FILTER(!ISBLANK(?s) && ISLITERAL(?o))
                       ?s a ?src_c .
@@ -651,7 +660,7 @@ class OntoGraf:
                     {
                       select ?src ?dt (COUNT(?src) as ?num) where {
                         {
-                            select (group_concat(?src_c;separator=' ') as ?src) (SAMPLE(?dtype) as ?dt) where {
+                            select (group_concat(?src_c;separator=' ') as ?src) (SAMPLE(COALESCE(?dtype, xsd:string)) as ?dt) where {
                               $pattern
                               FILTER(!ISBLANK(?s) && ISLITERAL(?o))
                               ?s a ?src_c .
