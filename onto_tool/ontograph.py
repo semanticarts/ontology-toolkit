@@ -825,7 +825,7 @@ class OntoGraf:
                                   arrowhead='normal')
                 self.graf.add_edge(edge)
 
-        self.graf.write(self.outdot)
+        self.graf.write(self.outdot, encoding="utf-8")
         if not self.no_image:
             self.graf.write_png(self.outpng)
         logging.debug("Plots saved")
