@@ -15,7 +15,7 @@ will install the `onto_tool` command and all its dependencies into your environm
 
 ```
 $ onto_tool -h
-usage: onto_tool [-h] {update,export,bundle,graphic} ...
+usage: onto_tool [-h] [-k] [-v] {update,export,bundle,graphic} ...
 
 Ontology toolkit.
 
@@ -25,11 +25,12 @@ positional arguments:
     update              Update versions and dependencies
     export              Export ontology
     bundle              Bundle ontology for release
-    graphic             Create PNG graphic and dot file from OWL files
+    graphic             Create PNG graphic and dot file from OWL files or SPARQL Endpoint
 
 optional arguments:
   -h, --help            show this help message and exit
   -k, --insecure        Allow insecure server connections when using SSL
+  -v, --version         Report onto-tool version and exit
 ```
 
 ## Sub-Commands
@@ -130,12 +131,15 @@ usage: onto_tool graphic [-h] [-e ENDPOINT] [--schema | --data]
                          [--link-concentrator-threshold LINK_CONCENTRATOR_THRESHOLD]
                          [--instance-limit INSTANCE_LIMIT]
                          [--predicate-threshold PREDICATE_THRESHOLD]
-                         [--include [INCLUDE ...] | --include-pattern
-                         [INCLUDE_REGEX ...] | --exclude [EXCLUDE ...] |
-                         --exclude-pattern [EXCLUDE_REGEX ...]] [-v VERSION]
-                         [-w [WEE ...]] [--hide [HIDE ...]] [--no-image]
-                         [-t TITLE]
-                         [ontology ...]
+                         [--include [INCLUDE [INCLUDE ...]] |
+                         --include-pattern [INCLUDE_REGEX [INCLUDE_REGEX ...]]
+                         | --exclude [EXCLUDE [EXCLUDE ...]] |
+                         --exclude-pattern
+                         [EXCLUDE_REGEX [EXCLUDE_REGEX ...]]] [-v VERSION]
+                         [-w [WEE [WEE ...]]]
+                         [--label-language LABEL_LANGUAGE]
+                         [--hide [HIDE [HIDE ...]]] [--no-image] [-t TITLE]
+                         [ontology [ontology ...]]
 
 positional arguments:
   ontology              Ontology file, directory or name pattern
@@ -168,10 +172,14 @@ optional arguments:
                         value to 0 disables this behavior.
   -v VERSION, --version VERSION
                         Version to place in graphic
-  -w [WEE ...], --wee [WEE ...]
+  -w [WEE [WEE ...]], --wee [WEE [WEE ...]]
                         For ontologies matching the patterns specified, only
                         render the name and import information. If no patterns
-                        are specified, applies to all onotologies.
+                        are specified, applies to all ontologies.
+  --label-language LABEL_LANGUAGE
+                        In case entities have labels in multiple languages,
+                        select either the specified language (default: en) or
+                        a non-lanugage label.
   --hide [HIDE [HIDE ...]]
                         When visualizing data, hide classes and properties
                         matching the regexpatterns specified with this option.

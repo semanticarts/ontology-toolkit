@@ -238,6 +238,9 @@ def configure_arg_parser():
                                 help="For ontologies matching the patterns specified, only render "
                                      "the name and import information. If no patterns are specified, applies "
                                      "to all ontologies.")
+    graphic_parser.add_argument('--label-language', action="store", default="en",
+                                help="In case entities have labels in multiple languages, select either "
+                                     "the specified language (default: en) or a non-lanugage label.")
     graphic_parser.add_argument('--hide', nargs="*", default=[],
                                 help="When visualizing data, hide classes and properties matching the regex"
                                      "patterns specified with this option.")
