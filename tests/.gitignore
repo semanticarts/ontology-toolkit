@@ -1,0 +1,26 @@
+bundle/each/
+bundle/endpoint_sparql/
+bundle/verify_construct_results/
+bundle/verify_select_results/
+
+# TODO: Update tests to use directories for all generated files if possible.
+
+bundle/should_not_write.xml
+
+bundle/sparql.csv
+bundle/sparql.ttl
+
+bundle/transform_sparql_data_en.ttl
+bundle/transform_sparql_data.xml
+
+bundle/verify_select_errors.csv
+bundle/verify_shacl_errors.ttl
+
+graphic/concentration.dot
+
+graphic/test_inheritance.dot
+graphic/test_instance.dot
+
+graphic/test_multi_lingual_en.dot
+graphic/test_multi_lingual_fr.dot
+graphic/test_schema.dot
