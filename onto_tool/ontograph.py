@@ -94,7 +94,7 @@ class OntoGraf:
                                  '', '', ''))
         return anonymized, os.path.basename(parsed.path)
 
-    def select_query(self, query):
+    def remote_select_query(self, query):
         """Execute SPARQL SELECT query, return results as generator."""
         logging.debug(f"Query against {self.repo}")
         logging.debug(f"Query\n {query}")
@@ -102,12 +102,18 @@ class OntoGraf:
         sparql = create_endpoint(self.repo)
         return select_query(sparql, query)
 
-    def graph_select_query(self, query):
+    def local_select_query(self, query):
         """Execute SPARQL SELECT query on local data, return results as generator."""
         logging.debug(f"Local Query\n {query}")
         results = self.data.query(query)
         for result in results:
             yield dict((str(k), str(v) if v is not None else None) for k, v in zip(results.vars, result))
+
+    def select_query(self, query):
+        if self.repo:
+            return self.remote_select_query(query)
+        else:
+            return self.local_select_query(query)
 
     @staticmethod
     def strip_uri(uri):
@@ -207,7 +213,7 @@ class OntoGraf:
             str(OWL.AnnotationProperty): 'annotation_propertiesList',
             str(OWL.imports): 'imports'
         }
-        for entity in self.select_query(onto_query):
+        for entity in self.remote_select_query(onto_query):
             key = mapping.get(entity['type'], 'gist_thingsList')
             onto_data[entity['ontology']][key].append(self.strip_uri(entity['entity']))
 
@@ -314,6 +320,9 @@ class OntoGraf:
         """
         # if not sys.stdout.isatty():
         #     return
+        if logging.root.getEffectiveLevel() == logging.DEBUG:
+            return
+
         percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
         filled_length = int(length * iteration // total)
         bar = fill * filled_length + '-' * (length - filled_length)
@@ -362,14 +371,14 @@ class OntoGraf:
         """).substitute(language=self.label_lang)
         self.node_data = {}
         if self.repo:
-            all_predicates = list(self.select_query(predicate_query))
+            all_predicates = list(self.remote_select_query(predicate_query))
         else:
             self.data = Graph()
             for file_path in self.files:
                 filename = os.path.basename(file_path)
                 logging.debug('Parsing %s for documentation', filename)
                 self.data.parse(file_path, format=guess_format(file_path))
-            all_predicates = list(self.graph_select_query(predicate_query))
+            all_predicates = list(self.local_select_query(predicate_query))
 
         hidden_predicates = set(predicate['predicate'] for predicate in all_predicates
                                 if self.hidden(predicate['predicate']))
@@ -387,16 +396,12 @@ class OntoGraf:
             predicate_str = predicate_row['label'] if predicate_row.get('label') \
                 else self.strip_uri(predicate)
 
-            if logging.root.getEffectiveLevel() != logging.DEBUG:
-                self.print_progress_bar(count, len(all_predicates),
-                                        prefix='Processing predicates:',
-                                        suffix=predicate_str + ' ' * 20, length=50)
+            self.print_progress_bar(count, len(all_predicates),
+                                    prefix='Processing predicates:',
+                                    suffix=predicate_str + ' ' * 20, length=50)
             pre_time = perf_counter()
             query_text = self.create_predicate_query(predicate, predicate_row.get('type'), self.limit)
-            if self.repo:
-                predicate_usage = list(self.select_query(query_text))
-            else:
-                predicate_usage = list(self.graph_select_query(query_text))
+            predicate_usage = list(self.select_query(query_text))
             logging.debug("%s items returned for %s", len(predicate_usage), predicate)
             for usage in predicate_usage:
                 if 'src' not in usage or usage['src'] is None or int(usage.get('num', 0)) < self.threshold:
@@ -405,9 +410,8 @@ class OntoGraf:
 
             logging.debug("Fetching %s took %d seconds", str(predicate_row), perf_counter() - pre_time)
 
-        if logging.root.getEffectiveLevel() != logging.DEBUG:
-            self.print_progress_bar(len(all_predicates), len(all_predicates),
-                                    prefix='Processing predicates:', suffix='Complete', length=50)
+        self.print_progress_bar(len(all_predicates), len(all_predicates),
+                                prefix='Processing predicates:', suffix='Complete', length=50)
 
         self.prune_for_inheritance()
 
@@ -442,9 +446,9 @@ class OntoGraf:
         }
         """).substitute(language=self.label_lang)
         if self.repo:
-            parents = list(self.select_query(inheritance_query))
+            parents = list(self.remote_select_query(inheritance_query))
         else:
-            parents = list(self.graph_select_query(inheritance_query))
+            parents = list(self.local_select_query(inheritance_query))
 
         for inheritance_info in parents:
             self.superclasses[inheritance_info['class']].add(inheritance_info['parent'])
@@ -478,9 +482,9 @@ class OntoGraf:
 
         class_query = self.create_class_count_query(self.limit)
         if self.repo:
-            class_counts = list(self.select_query(class_query))
+            class_counts = list(self.remote_select_query(class_query))
         else:
-            class_counts = list(self.graph_select_query(class_query))
+            class_counts = list(self.local_select_query(class_query))
         for instance_info in class_counts:
             self.class_counts[self.deepest_class(instance_info['src'])] += int(instance_info['num'])
 
@@ -555,7 +559,7 @@ class OntoGraf:
               { ?shape (sh:and|sh:or|sh:xone|sh:not|rdf:first|rdf:rest)+/sh:path ?property }
             }
             """
-        shacl_data = self.select_query(shacl_query) if self.repo else self.graph_select_query(shacl_query)
+        shacl_data = self.remote_select_query(shacl_query) if self.repo else self.local_select_query(shacl_query)
         for row in shacl_data:
             self.shapes[row['class']].append(row['property'])
 
@@ -644,7 +648,8 @@ class OntoGraf:
                     {
                       select ?src ?tgt (COUNT(?src) as ?num) where {
                         {
-                            select (group_concat(?src_c;separator=' ') as ?src) (group_concat(?tgt_c;separator=' ') as ?tgt) where {
+                            select (group_concat(?src_c;separator=' ') as ?src)
+                                   (group_concat(?tgt_c;separator=' ') as ?tgt) where {
                               $pattern
                               FILTER(!ISBLANK(?s))
                               ?s a ?src_c .
@@ -660,7 +665,8 @@ class OntoGraf:
                     {
                       select ?src ?dt (COUNT(?src) as ?num) where {
                         {
-                            select (group_concat(?src_c;separator=' ') as ?src) (SAMPLE(COALESCE(?dtype, xsd:string)) as ?dt) where {
+                            select (group_concat(?src_c;separator=' ') as ?src)
+                                   (SAMPLE(COALESCE(?dtype, xsd:string)) as ?dt) where {
                               $pattern
                               FILTER(!ISBLANK(?s) && ISLITERAL(?o))
                               ?s a ?src_c .
@@ -740,52 +746,11 @@ class OntoGraf:
         max_instance = max(self.class_counts.values())
 
         for class_, class_data in data_dict.items():
-            node_font_size = self.font_size(self.class_counts[class_], max_instance)
-            node_line_width = self.line_width(self.class_counts[class_], max_instance)
-            if class_data['data']:
-                class_info = \
-                    """<<table color="black" border="{line_width}" cellspacing="0" cellborder="1">
-                     <tr>
-                      <td align="center" bgcolor="{label_bg}"><font point-size="{fontsize}" color="{label_fg}">{class_label}</font></td></tr>
-                     <tr>
-                      <td align="center">{attribute_text}</td>
-                     </tr>
-                    </table>>""".format(
-                        label_fg="white" if class_ in self.shapes else "black",
-                        label_bg="darkgreen" if class_ in self.shapes else "white",
-                        fontsize=node_font_size,
-                        line_width=node_line_width,
-                        class_label=class_data['label'] if class_data['label'] else self.strip_uri(class_),
-                        attribute_text="<br/>".join(
-                            '<font point-size="{fontsize}" color="{color}">{prop}: {dt}</font>'.format(
-                                color="darkgreen" if predicate in self.shapes[class_] else "black",
-                                fontsize=round(node_font_size * 2 / 3),
-                                prop=prop, dt=dt) for predicate, prop, dt in class_data['data'].keys()))
-                node = pydot.Node(name='"' + class_ + '"',
-                                  margin="0",
-                                  label=class_info)
-            else:
-                node = pydot.Node(name='"' + class_ + '"',
-                                  label=class_data['label'] if class_data['label'] else self.strip_uri(class_),
-                                  style='filled',
-                                  fontsize=node_font_size,
-                                  penwidth=node_line_width,
-                                  color="black",
-                                  fillcolor="darkgreen" if class_ in self.shapes else "white",
-                                  fontcolor="white" if class_ in self.shapes else "black")
+            node = self.create_instance_graph_node(max_instance, class_, class_data)
 
             self.graf.add_node(node)
 
-            by_predicate = defaultdict(set)
-            if self.concentrate_links != 0:
-                for link in class_data['links']:
-                    predicate, _, target = link
-                    # Don't concentrate self-links
-                    if class_ != target:
-                        by_predicate[predicate].add(link)
-
-            compacted_links = set(predicate for predicate, links in by_predicate.items()
-                                  if len(links) >= self.concentrate_links)
+            by_predicate, compacted_links = self.determine_compacted_links(class_, class_data)
 
             for link, num in class_data['links'].items():
                 predicate, predicate_str, target = link
@@ -805,7 +770,7 @@ class OntoGraf:
                 self.graf.add_node(shared_node)
                 total_count = sum(class_data['links'][link] for link in links)
                 edge_color = self.shacl_color if predicate in self.shapes[class_] else self.arrow_color
-                predicate_label = next(l for l in links)[1]
+                predicate_label = next(link for link in links)[1]
                 self.graf.add_edge(
                     pydot.Edge(class_, shared_node_id,
                                label=predicate_label,
@@ -829,6 +794,60 @@ class OntoGraf:
         if not self.no_image:
             self.graf.write_png(self.outpng)
         logging.debug("Plots saved")
+
+    def determine_compacted_links(self, class_, class_data):
+        by_predicate = defaultdict(set)
+        if self.concentrate_links != 0:
+            for link in class_data['links']:
+                predicate, _, target = link
+                # Don't concentrate self-links
+                if class_ != target:
+                    by_predicate[predicate].add(link)
+
+        compacted_links = set(predicate for predicate, links in by_predicate.items()
+                              if len(links) >= self.concentrate_links)
+
+        return by_predicate, compacted_links
+
+    def create_instance_graph_node(self, max_instance, class_, class_data):
+        node_font_size = self.font_size(self.class_counts[class_], max_instance)
+        node_line_width = self.line_width(self.class_counts[class_], max_instance)
+        if class_data['data']:
+            formatted_label = '<font point-size="{fontsize}" color="{label_fg}">{class_label}</font>'.format(
+                        label_fg="white" if class_ in self.shapes else "black",
+                        fontsize=node_font_size,
+                        class_label=class_data['label'] if class_data['label'] else self.strip_uri(class_)
+                )
+            class_info = \
+                """<<table color="black" border="{line_width}" cellspacing="0" cellborder="1">
+                    <tr>
+                    <td align="center" bgcolor="{label_bg}">{formatted_label}</td></tr>
+                    <tr>
+                    <td align="center">{attribute_text}</td>
+                    </tr>
+                </table>>""".format(
+                    label_bg="darkgreen" if class_ in self.shapes else "white",
+                    formatted_label=formatted_label,
+                    line_width=node_line_width,
+                    attribute_text="<br/>".join(
+                        '<font point-size="{fontsize}" color="{color}">{prop}: {dt}</font>'.format(
+                            color="darkgreen" if predicate in self.shapes[class_] else "black",
+                            fontsize=round(node_font_size * 2 / 3),
+                            prop=prop, dt=dt) for predicate, prop, dt in class_data['data'].keys()))
+            node = pydot.Node(name='"' + class_ + '"',
+                              margin="0",
+                              label=class_info)
+        else:
+            node = pydot.Node(name='"' + class_ + '"',
+                              label=class_data['label'] if class_data['label'] else self.strip_uri(class_),
+                              style='filled',
+                              fontsize=node_font_size,
+                              penwidth=node_line_width,
+                              color="black",
+                              fillcolor="darkgreen" if class_ in self.shapes else "white",
+                              fontcolor="white" if class_ in self.shapes else "black")
+
+        return node
 
     def ontology_matches_filter(self, ontology):
         if self.include:
