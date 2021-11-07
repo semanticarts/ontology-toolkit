@@ -13,3 +13,4 @@ __pycache__/
 .idea/
 dist/
 onto_tool.egg-info/
+tests-output/

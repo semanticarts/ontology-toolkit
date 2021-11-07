@@ -8,12 +8,12 @@ def test_local_instance():
         'graphic', '--predicate-threshold', '0', '--data',
         '-t', 'Local Instance Data',
         '--no-image',
-        '-o', 'tests/graphic/test_instance',
+        '-o', 'tests-output/graphic/test_instance',
         'tests/graphic/domain_ontology.ttl',
         'tests/graphic/upper_ontology.ttl',
         'tests/graphic/instance_data.ttl'
     ])
-    (instance_graph,) = pydot.graph_from_dot_file('tests/graphic/test_instance.dot')
+    (instance_graph,) = pydot.graph_from_dot_file('tests-output/graphic/test_instance.dot')
     edges = list(sorted((e.get_source(), e.get_destination()) for e in instance_graph.get_edges()))
     assert edges == [
         ('"http://example.com/Student"', '"http://example.com/Person"'),
@@ -27,10 +27,10 @@ def test_multi_language():
         'graphic', '--predicate-threshold', '0', '--data',
         '-t', 'Multi Language Labels',
         '--no-image',
-        '-o', 'tests/graphic/test_multi_lingual_en',
+        '-o', 'tests-output/graphic/test_multi_lingual_en',
         'tests/graphic/multi_language.ttl'
     ])
-    (instance_graph,) = pydot.graph_from_dot_file('tests/graphic/test_multi_lingual_en.dot')
+    (instance_graph,) = pydot.graph_from_dot_file('tests-output/graphic/test_multi_lingual_en.dot')
     edges = list(sorted((e.get_source(), e.get_label(), e.get_destination()) for e in instance_graph.get_edges()))
     assert edges == [
         ('"http://example.com/Person"', 'likes', '"http://example.com/Dessert"')
@@ -40,10 +40,10 @@ def test_multi_language():
         'graphic', '--predicate-threshold', '0', '--data',
         '-t', 'Multi Language Labels',
         '--no-image', '--label-language', 'fr',
-        '-o', 'tests/graphic/test_multi_lingual_fr',
+        '-o', 'tests-output/graphic/test_multi_lingual_fr',
         'tests/graphic/multi_language.ttl'
     ])
-    (instance_graph,) = pydot.graph_from_dot_file('tests/graphic/test_multi_lingual_fr.dot')
+    (instance_graph,) = pydot.graph_from_dot_file('tests-output/graphic/test_multi_lingual_fr.dot')
     edges = list(sorted((e.get_source(), e.get_label(), e.get_destination()) for e in instance_graph.get_edges()))
     assert edges == [
         ('"http://example.com/Person"', 'aime', '"http://example.com/Dessert"')
@@ -55,10 +55,10 @@ def test_inheritance():
                        'graphic', '--predicate-threshold', '0', '--data',
                        '-t', 'Inheritance is Difficult',
                        '--no-image',
-                       '-o', 'tests/graphic/test_inheritance',
+                       '-o', 'tests-output/graphic/test_inheritance',
                        'tests/graphic/inheritance_hierarchy.ttl'
                    ])
-    (instance_graph,) = pydot.graph_from_dot_file('tests/graphic/test_inheritance.dot')
+    (instance_graph,) = pydot.graph_from_dot_file('tests-output/graphic/test_inheritance.dot')
     edges = list(sorted((e.get_source(), e.get_label() or '', e.get_destination()) for e in instance_graph.get_edges()))
     assert edges == [
         ('"http://example.org/Person"', 'memberOf', '"http://example.org/Organization"'),
@@ -78,7 +78,7 @@ def test_verify_construct(caplog):
                        'graphic', '--data',
                        '-t', 'Local Instance Data',
                        '--no-image',
-                       '-o', 'tests/graphic/test_instance'
+                       '-o', 'tests-output/graphic/test_instance'
                    ] + glob.glob('tests/graphic/*_ontology.ttl'))
     logs = caplog.text
     assert 'No data found' in logs
@@ -91,10 +91,10 @@ def test_concentration():
         '--debug',
         '-t', 'Looney Tunes',
         '--no-image',
-        '-o', 'tests/graphic/concentration',
+        '-o', 'tests-output/graphic/concentration',
         'tests/graphic/concentration.ttl'
     ])
-    (instance_graph,) = pydot.graph_from_dot_file('tests/graphic/concentration.dot')
+    (instance_graph,) = pydot.graph_from_dot_file('tests-output/graphic/concentration.dot')
     assert 1 == sum(1 for e in instance_graph.get_edges() if e.get_label() == 'playsWith')
 
     # Then, without
@@ -103,8 +103,8 @@ def test_concentration():
         '-t', 'Looney Tunes',
         '--no-image',
         '--link-concentrator-threshold', '0',
-        '-o', 'tests/graphic/concentration',
+        '-o', 'tests-output/graphic/concentration',
         'tests/graphic/concentration.ttl'
     ])
-    (instance_graph,) = pydot.graph_from_dot_file('tests/graphic/concentration.dot')
+    (instance_graph,) = pydot.graph_from_dot_file('tests-output/graphic/concentration.dot')
     assert 4 == sum(1 for e in instance_graph.get_edges() if e.get_label() == 'playsWith')
