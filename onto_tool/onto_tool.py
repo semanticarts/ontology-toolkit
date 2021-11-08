@@ -1013,7 +1013,7 @@ def __verify_shacl__(action, variables):
         pyshacl.validate(
             data_graph, shacl_graph=shape_graph,
             inference=None if 'inference' not in action else action['inference'],
-            abort_on_error=False, meta_shacl=False,
+            abort_on_first=False, meta_shacl=False,
             advanced=True, js=False, debug=False)
 
     logging.debug("Post-inference data graph has %s triples", sum(1 for _ in data_graph))
