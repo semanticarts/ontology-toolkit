@@ -6,6 +6,7 @@ import sys
 from os.path import join, isdir, isfile, basename, splitext
 from glob import glob
 import re
+import tempfile
 import subprocess
 import shutil
 import gzip
@@ -555,7 +556,8 @@ def __parse_update_query__(query_text):
     return parsed_query
 
 
-def __bundle_transform__(action, tools, variables):
+@register(name="transform")
+def __bundle_transform__(action, variables, tools):
     logging.debug('Transform %s', action)
     tool = next((t for t in tools if t['name'] == action['tool']), None)
     if not tool:
@@ -571,7 +573,7 @@ def __bundle_transform__(action, tools, variables):
 
 
 @register(name="definedBy")
-def __bundle_defined_by__(action, variables):
+def __bundle_defined_by__(action, variables, **kwargs):
     logging.debug('Add definedBy %s', action)
     for in_out in __bundle_file_list(action, variables):
         g = Graph()
@@ -599,7 +601,7 @@ def __bundle_defined_by__(action, variables):
 
 
 @register(name="copy")
-def __bundle_copy__(action, variables):
+def __bundle_copy__(action, variables, **kwargs):
     logging.debug('Copy %s', action)
     for in_out in __bundle_file_list(action, variables):
         if isfile(in_out['inputFile']):
@@ -613,7 +615,7 @@ def __bundle_copy__(action, variables):
 
 
 @register(name="move")
-def __bundle_move__(action, variables):
+def __bundle_move__(action, variables, **kwargs):
     logging.debug('Move %s', action)
     for in_out in __bundle_file_list(action, variables):
         if isfile(in_out['inputFile']):
@@ -627,7 +629,7 @@ def __bundle_move__(action, variables):
 
 
 @register(name="markdown")
-def __bundle_markdown__(action, variables):
+def __bundle_markdown__(action, variables, **kwargs):
     logging.debug('Markdown %s', action)
     conv = Markdown2HTML()
     filepath_in = action['source'].format(**variables)
@@ -640,7 +642,7 @@ def __bundle_markdown__(action, variables):
 
 
 @register(name="graph")
-def __bundle_graph__(action, variables):
+def __bundle_graph__(action, variables, **kwargs):
     logging.debug('Graph %s', action)
     documentation = action['target'].format(**variables)
     version = action['version'].format(**variables)
@@ -808,7 +810,7 @@ def __bundle_endpoint_sparql__(action, variables, output, queries):
 
 
 @register(name="sparql")
-def __bundle_sparql__(action, variables):
+def __bundle_sparql__(action, variables, **kwargs):
     logging.debug('SPARQL %s', action)
     output = action['target'].format(**variables) if 'target' in action else None
     queries = __build_query_list__(action, variables)
@@ -839,7 +841,7 @@ def __build_graph_from_inputs__(action, variables):
 
 
 @register(name="verify")
-def __bundle_verify__(action, variables):
+def __bundle_verify__(action, variables, tools):
     logging.debug('Verify %s', action)
     if action['type'] == 'select':
         __verify_select__(action, variables)
@@ -849,6 +851,8 @@ def __bundle_verify__(action, variables):
         __verify_construct__(action, variables)
     elif action['type'] == 'shacl':
         __verify_shacl__(action, variables)
+    elif action['type'] == 'tool':
+        __verify_tool__(action, variables, tools)
 
 
 def __verify_select__(action, variables):
@@ -1036,6 +1040,91 @@ def __verify_shacl__(action, variables):
             exit(1)
 
 
+def __verify_tool__(action, variables, tools):
+    with tempfile.TemporaryDirectory() as tempdir:
+        tool = next((t for t in tools if t['name'] == action['tool']), None)
+        if not tool:
+            raise Exception('Missing tool ', action['tool'])
+
+        data_graph = __build_graph_from_inputs__(action, variables)
+        data_file = os.path.join(tempdir, "data.ttl")
+        data_graph.serialize(data_file, format="turtle", encoding="utf-8")
+        shape_graph = __build_graph_from_inputs__(action['shapes'], variables)
+        shape_file = os.path.join(tempdir, "shapes.ttl")
+        shape_graph.serialize(shape_file, format="turtle", encoding="utf-8")
+
+        logging.debug("Data graph has %s triples", sum(1 for _ in data_graph))
+        logging.debug("Shape graph has %s triples", sum(1 for _ in shape_graph))
+
+        arguments = []
+        if tool['type'] == 'Java':
+            arguments = ["java", "-jar", tool['jar']] + tool['arguments']
+        elif tool['type'] == 'shell':
+            arguments = tool['arguments']
+        else:
+            raise Exception('Unsupported tool type for verify', tool['type'])
+
+        outputPath, interpreted_args = __run_verify_tool__(action, variables, data_file, shape_file, arguments)
+
+        if outputPath:
+            __report_violations_from_tool__(action, outputPath, interpreted_args)
+
+
+def __run_verify_tool__(action, variables, data_file, shape_file, arguments):
+    invocation_vars = VarDict()
+    invocation_vars.update(variables)
+    invocation_vars.update({
+            'dataFile': data_file,
+            'shapeFile': shape_file
+        })
+    outputPath = None
+    if action.get('target'):
+        outputPath = action['target'].format(**variables)
+        invocation_vars.update({'outputFile', action['target']})
+    interpreted_args = [arg.format(**invocation_vars) for arg in arguments]
+    logging.debug('Running %s', interpreted_args)
+    status = subprocess.run(interpreted_args, capture_output=True)
+    if status.stdout:
+        logging.debug('stdout for %s is %s', action, status.stdout)
+        if __boolean_option__(action, 'redirectOutput'):
+            if not outputPath:
+                raise Exception('Must provide target when redirecting output', action)
+            with open(outputPath, 'w', encoding='utf-8') as redirected:
+                redirected.write(status.stdout)
+    if status.stderr:
+        logging.debug('stderr for %s is %s', action, status.stderr)
+    if status.returncode != 0:
+        logging.error("Tool %s exited with %d: %s", interpreted_args, status.returncode, status.stderr)
+        exit(1)
+    return outputPath, interpreted_args
+
+
+def __report_violations_from_tool__(action, outputPath, interpreted_args):
+    if not os.path.isfile(outputPath):
+        logging.error("Tool %s exited without generating expected output", interpreted_args)
+        exit(1)
+
+    results_graph = Graph()
+    results_graph.parse(outputPath, format=guess_format(outputPath))
+
+    not_conforms = results_graph.query("""
+        prefix sh: <http://www.w3.org/ns/shacl#>
+        ASK { ?report a sh:ValidationReport; sh:conforms false . }
+    """)
+    if not_conforms.askAnswer:
+        result_table, count, violation = __format_validation_results__(results_graph)
+        fail_on_warning = 'failOn' in action and action['failOn'] == 'warning'
+        if not count:
+            logging.warning("SHACL verification did not produce a well-formed ViolationReport:\n%s", result_table)
+        else:
+            if violation or fail_on_warning:
+                logging.error("SHACL verification produced non-empty results:\n%s", result_table)
+            else:
+                logging.warning("SHACL verification produced non-empty results:\n%s", result_table)
+        if fail_on_warning or violation:
+            exit(1)
+
+
 def __format_validation_results__(results_graph: Graph) -> Tuple[str, int, bool]:
     """Format validation results as text table.
 
@@ -1144,7 +1233,7 @@ def __boolean_option__(action, key, variables, default=False):
 
 
 @register(name="export")
-def __bundle_export__(action, variables):
+def __bundle_export__(action, variables, **kwargs):
     logging.debug('Export %s', action)
     if __boolean_option__(action, 'compress', variables):
         output = gzip.open(action['target'].format(**variables), 'wt', encoding="utf-8")
@@ -1217,14 +1306,12 @@ def bundle_ontology(command_line_variables, bundle_path):
     for action in bundle['actions']:
         if 'message' in action:
             logging.info(action['message'].format(**substituted))
-        if action['action'] == 'transform':
-            __bundle_transform__(action, bundle['tools'], substituted)
-        elif action['action'] == 'mkdir':
+        if action['action'] == 'mkdir':
             path = action['directory'].format(**substituted)
             if not isdir(path):
                 os.makedirs(path)
         elif action['action'] in BUNDLE_ACTIONS:
-            BUNDLE_ACTIONS[action['action']](action, substituted)
+            BUNDLE_ACTIONS[action['action']](action, substituted, tools=bundle.get('tools', {}))
         else:
             raise Exception('Unknown action ' + str(action))
 
