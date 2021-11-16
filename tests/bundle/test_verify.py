@@ -133,3 +133,41 @@ def test_verify_shacl(caplog):
     sh = Namespace('http://www.w3.org/ns/shacl#')
     errors = [validation_graph.subjects(RDF.type, sh.ValidationResult)]
     assert len(errors) == 1
+
+
+def test_verify_tool_shell(caplog):
+    with raises(SystemExit) as wrapped_exit:
+        onto_tool.main([
+            'bundle', '-v', 'output', 'tests-output/bundle', 'tests/bundle/verify_tool.yaml'
+        ])
+    assert wrapped_exit.type == SystemExit
+    assert wrapped_exit.value.code == 1
+
+    logs = caplog.text
+    assert 'Tool verification' in logs
+    assert 'Fake Violation' in logs
+
+    validation_graph = Graph()
+    validation_graph.parse('tests-output/bundle/verify_tool_copy.ttl', format='turtle')
+    sh = Namespace('http://www.w3.org/ns/shacl#')
+    errors = [validation_graph.subjects(RDF.type, sh.ValidationResult)]
+    assert len(errors) == 1
+
+
+def test_verify_tool_shell_redirect(caplog):
+    with raises(SystemExit) as wrapped_exit:
+        onto_tool.main([
+            'bundle', '-v', 'output', 'tests-output/bundle', 'tests/bundle/verify_tool_redirect.yaml'
+        ])
+    assert wrapped_exit.type == SystemExit
+    assert wrapped_exit.value.code == 1
+
+    logs = caplog.text
+    assert 'Tool verification' in logs
+    assert 'Fake Violation' in logs
+
+    validation_graph = Graph()
+    validation_graph.parse('tests-output/bundle/verify_tool_redirect.ttl', format='turtle')
+    sh = Namespace('http://www.w3.org/ns/shacl#')
+    errors = [validation_graph.subjects(RDF.type, sh.ValidationResult)]
+    assert len(errors) == 1

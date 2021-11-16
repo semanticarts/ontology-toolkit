@@ -1080,16 +1080,16 @@ def __run_verify_tool__(action, variables, data_file, shape_file, arguments):
     outputPath = None
     if action.get('target'):
         outputPath = action['target'].format(**variables)
-        invocation_vars.update({'outputFile', action['target']})
+        invocation_vars.update({'outputFile': outputPath})
     interpreted_args = [arg.format(**invocation_vars) for arg in arguments]
     logging.debug('Running %s', interpreted_args)
     status = subprocess.run(interpreted_args, capture_output=True)
     if status.stdout:
         logging.debug('stdout for %s is %s', action, status.stdout)
-        if __boolean_option__(action, 'redirectOutput'):
+        if __boolean_option__(action, 'redirectOutput', variables):
             if not outputPath:
                 raise Exception('Must provide target when redirecting output', action)
-            with open(outputPath, 'w', encoding='utf-8') as redirected:
+            with open(outputPath, 'wb') as redirected:
                 redirected.write(status.stdout)
     if status.stderr:
         logging.debug('stderr for %s is %s', action, status.stderr)
@@ -1115,12 +1115,12 @@ def __report_violations_from_tool__(action, outputPath, interpreted_args):
         result_table, count, violation = __format_validation_results__(results_graph)
         fail_on_warning = 'failOn' in action and action['failOn'] == 'warning'
         if not count:
-            logging.warning("SHACL verification did not produce a well-formed ViolationReport:\n%s", result_table)
+            logging.warning("Tool verification did not produce a well-formed ViolationReport:\n%s", result_table)
         else:
             if violation or fail_on_warning:
-                logging.error("SHACL verification produced non-empty results:\n%s", result_table)
+                logging.error("Tool verification produced non-empty results:\n%s", result_table)
             else:
-                logging.warning("SHACL verification produced non-empty results:\n%s", result_table)
+                logging.warning("Tool verification produced non-empty results:\n%s", result_table)
         if fail_on_warning or violation:
             exit(1)
 
