@@ -1049,12 +1049,15 @@ def __verify_tool__(action, variables, tools):
         data_graph = __build_graph_from_inputs__(action, variables)
         data_file = os.path.join(tempdir, "data.ttl")
         data_graph.serialize(data_file, format="turtle", encoding="utf-8")
-        shape_graph = __build_graph_from_inputs__(action['shapes'], variables)
-        shape_file = os.path.join(tempdir, "shapes.ttl")
-        shape_graph.serialize(shape_file, format="turtle", encoding="utf-8")
-
+        if "shapes" in action:
+            shape_graph = __build_graph_from_inputs__(action['shapes'], variables)
+            shape_file = os.path.join(tempdir, "shapes.ttl")
+            shape_graph.serialize(shape_file, format="turtle", encoding="utf-8")
+            logging.debug("Shape graph has %s triples", sum(1 for _ in shape_graph))
+        else:
+            shape_file = None
         logging.debug("Data graph has %s triples", sum(1 for _ in data_graph))
-        logging.debug("Shape graph has %s triples", sum(1 for _ in shape_graph))
+
 
         arguments = []
         if tool['type'] == 'Java':

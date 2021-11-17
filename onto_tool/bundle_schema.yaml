@@ -346,7 +346,7 @@ properties:
                   required:
                     - tool
                     - source
-                    - shapes
+                    #- shapes
             required:
               - type
         - if:
