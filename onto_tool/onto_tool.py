@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import sys
+import traceback
 from os.path import join, isdir, isfile, basename, splitext
 from glob import glob
 import re
@@ -1058,7 +1059,6 @@ def __verify_tool__(action, variables, tools):
             shape_file = None
         logging.debug("Data graph has %s triples", sum(1 for _ in data_graph))
 
-
         arguments = []
         if tool['type'] == 'Java':
             arguments = ["java", "-jar", tool['jar']] + tool['arguments']
@@ -1086,7 +1086,15 @@ def __run_verify_tool__(action, variables, data_file, shape_file, arguments):
         invocation_vars.update({'outputFile': outputPath})
     interpreted_args = [arg.format(**invocation_vars) for arg in arguments]
     logging.debug('Running %s', interpreted_args)
-    status = subprocess.run(interpreted_args, capture_output=True)
+    try:
+        status = subprocess.run(interpreted_args, capture_output=True)
+    except Exception:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        traceback.print_tb(exc_traceback, limit=30, file=sys.stdout)
+        print(exc_value, file=sys.stdout)
+        print(exc_type, file=sys.stdout)
+        sys.exit()
+
     if status.stdout:
         logging.debug('stdout for %s is %s', action, status.stdout)
         if __boolean_option__(action, 'redirectOutput', variables):

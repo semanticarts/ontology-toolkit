@@ -2,6 +2,8 @@ from onto_tool import onto_tool
 import csv
 from os.path import isfile
 from pytest import raises
+import pytest
+import sys
 import re
 from rdflib import Graph
 from rdflib.namespace import Namespace, RDF
@@ -134,7 +136,7 @@ def test_verify_shacl(caplog):
     errors = [validation_graph.subjects(RDF.type, sh.ValidationResult)]
     assert len(errors) == 1
 
-
+@pytest.mark.skipif(sys.platform == 'win32', reason="No /bin/cp")
 def test_verify_tool_shell(caplog):
     with raises(SystemExit) as wrapped_exit:
         onto_tool.main([
@@ -153,7 +155,7 @@ def test_verify_tool_shell(caplog):
     errors = [validation_graph.subjects(RDF.type, sh.ValidationResult)]
     assert len(errors) == 1
 
-
+@pytest.mark.skipif(sys.platform == 'win32', reason="No /bin/cp")
 def test_verify_tool_shell_redirect(caplog):
     with raises(SystemExit) as wrapped_exit:
         onto_tool.main([
