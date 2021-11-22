@@ -24,7 +24,8 @@ setuptools.setup(
         'mdx_smartypants',
         'pyyaml',
         'jsonschema>=3.2.0',
-        'SPARQLWrapper>=1.8.5'
+        'SPARQLWrapper>=1.8.5',
+        'pyshacl~=0.17.0'
     ],
     tests_require=[
         'pytest'
