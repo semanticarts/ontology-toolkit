@@ -23,6 +23,7 @@ from rdflib.plugins.sparql import prepareQuery
 from SPARQLWrapper import TURTLE
 import pyshacl
 from pyparsing import ParseException
+import datetime
 
 import onto_tool
 from .command_line import configure_arg_parser
@@ -1147,7 +1148,7 @@ def __format_validation_results__(results_graph: Graph) -> Tuple[str, int, bool]
     result_table = io.StringIO()
     violations = results_graph.query("""
             prefix sh: <http://www.w3.org/ns/shacl#>
-            SELECT ?focus ?path ?value ?component ?severity ?message WHERE {
+            SELECT distinct ?focus ?path ?value ?component ?severity ?message WHERE {
                 ?violation
                    sh:focusNode ?focus ;
                    sh:resultMessage ?message ;
@@ -1157,6 +1158,7 @@ def __format_validation_results__(results_graph: Graph) -> Tuple[str, int, bool]
                 OPTIONAL { ?violation sh:sourceConstraintComponent ?component }
             }
         """)
+    violations.serialize("./{0}_violations.csv".format(datetime.datetime.now().isoformat()[:10]), format="csv")
     rows = []
     headers = ['Focus', 'Path', 'Value', 'Severity', 'Message']
     max_length = [len(h) for h in headers]
@@ -1181,7 +1183,7 @@ def __format_validation_results__(results_graph: Graph) -> Tuple[str, int, bool]
         # Extend the width of each column to contain the longest value.
         max_length = [max(a, b) for a, b in zip(max_length, [len(s) for s in as_text])]
         rows.append(as_text)
-    row_format = " ".join(f"{{:{length}.{length}}}" for length in max_length) + "\n"
+    row_format = "||" + "| ".join(f"{{:{length}.{length}}}" for length in max_length) + "||\n"
     rows.sort(key=lambda x: x[0])
     result_table.write(row_format.format(*headers))
     for row in rows:
