@@ -1070,7 +1070,13 @@ def __verify_tool__(action, variables, tools):
         outputPath, interpreted_args = __run_verify_tool__(action, variables, data_file, shape_file, arguments)
 
         if outputPath:
-            __report_violations_from_tool__(action, outputPath, interpreted_args)
+            try:
+                __report_violations_from_tool__(action, outputPath, interpreted_args)
+            except Exception as e:
+                logging.debug('Error in the report violations: %s',e)
+                if variables['EUValidatorOutputFile']:
+                    EUValidatorOutputFile = variables['EUValidatorOutputFile']
+                    __report_violations_from_tool__(action, EUValidatorOutputFile, interpreted_args)
 
 
 def __run_verify_tool__(action, variables, data_file, shape_file, arguments):
@@ -1089,11 +1095,8 @@ def __run_verify_tool__(action, variables, data_file, shape_file, arguments):
     try:
         status = subprocess.run(interpreted_args, capture_output=True)
     except Exception:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-        traceback.print_tb(exc_traceback, limit=30, file=sys.stdout)
-        print(exc_value, file=sys.stdout)
-        print(exc_type, file=sys.stdout)
-        sys.exit()
+        logging.error('Exited with error:  %s : %s',exc_value, exc_type)
+        exit(1)
 
     if status.stdout:
         logging.debug('stdout for %s is %s', action, status.stdout)
