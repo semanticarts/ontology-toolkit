@@ -1071,13 +1071,7 @@ def __verify_tool__(action, variables, tools):
         outputPath, interpreted_args = __run_verify_tool__(action, variables, data_file, shape_file, arguments)
 
         if outputPath:
-            try:
-                __report_violations_from_tool__(action, outputPath, interpreted_args)
-            except Exception as e:
-                logging.debug('Error in the report violations: %s',e)
-                if variables['EUValidatorOutputFile']:
-                    EUValidatorOutputFile = variables['EUValidatorOutputFile']
-                    __report_violations_from_tool__(action, EUValidatorOutputFile, interpreted_args)
+            __report_violations_from_tool__(action, outputPath, interpreted_args)
 
 
 def __run_verify_tool__(action, variables, data_file, shape_file, arguments):
