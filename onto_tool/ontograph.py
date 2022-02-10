@@ -574,7 +574,7 @@ class OntoGraf:
 
             select ?src (COUNT(?src) as ?num) where {
               {
-                select (group_concat(?o;separator=' ') as ?src) where {
+                select (group_concat(str(?o);separator=' ') as ?src) where {
                   $pattern
                   FILTER(!ISBLANK(?s))
                   FILTER (!STRSTARTS(STR(?o), 'http://www.w3.org/2002/07/owl#'))
@@ -599,13 +599,14 @@ class OntoGraf:
 
                 select ?src ?tgt (COUNT(?src) as ?num) where {
                   {
-                    select (group_concat(?src_c;separator=' ') as ?src) (group_concat(?tgt_c;separator=' ') as ?tgt) where {
-                      $pattern
+                    select (group_concat(str(?src_c);separator=' ') as ?src) (group_concat(str(?tgt_c);separator=' ') as ?tgt) where {
+                      { SELECT * WHERE { $pattern 
                       FILTER(!ISBLANK(?s))
                       ?s a ?src_c .
                       FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
                       ?o a ?tgt_c .
-                    } group by ?s ?o LIMIT $limit
+                      } LIMIT $limit }
+                    } group by ?s ?o 
                   }
                 } group by ?src ?tgt
                 """
@@ -620,13 +621,14 @@ class OntoGraf:
 
                 select ?src ?dt (COUNT(?src) as ?num) where {
                   {
-                    select (group_concat(?src_c;separator=' ') as ?src) (SAMPLE(COALESCE(?dtype, xsd:string)) as ?dt) where {
-                      $pattern
+                    select (group_concat(str(?src_c);separator=' ') as ?src) (SAMPLE(COALESCE(?dtype, xsd:string)) as ?dt) where {
+                     { SELECT * WHERE { $pattern 
                       FILTER(!ISBLANK(?s) && ISLITERAL(?o))
                       ?s a ?src_c .
                       FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
                       BIND(DATATYPE(?o) as ?dtype) .
-                    } group by ?s LIMIT $limit
+                      } LIMIT $limit }
+                    } group by ?s 
                   }
                 } group by ?src ?dt
                 """
@@ -648,14 +650,15 @@ class OntoGraf:
                     {
                       select ?src ?tgt (COUNT(?src) as ?num) where {
                         {
-                            select (group_concat(?src_c;separator=' ') as ?src)
-                                   (group_concat(?tgt_c;separator=' ') as ?tgt) where {
-                              $pattern
+                            select (group_concat(str(?src_c);separator=' ') as ?src)
+                                   (group_concat(str(?tgt_c);separator=' ') as ?tgt) where {
+                              { SELECT * WHERE { $pattern 
                               FILTER(!ISBLANK(?s))
                               ?s a ?src_c .
                               FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
                               ?o a ?tgt_c .
-                            } group by ?s ?o LIMIT $limit
+                              } LIMIT $limit }
+                            } group by ?s ?o 
                         }
                       } group by ?src ?tgt
                     }
@@ -665,14 +668,15 @@ class OntoGraf:
                     {
                       select ?src ?dt (COUNT(?src) as ?num) where {
                         {
-                            select (group_concat(?src_c;separator=' ') as ?src)
+                            select (group_concat(str(?src_c);separator=' ') as ?src)
                                    (SAMPLE(COALESCE(?dtype, xsd:string)) as ?dt) where {
-                              $pattern
+                              { SELECT * WHERE { $pattern 
                               FILTER(!ISBLANK(?s) && ISLITERAL(?o))
                               ?s a ?src_c .
                               FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
                               BIND(DATATYPE(?o) as ?dtype) .
-                            } group by ?s LIMIT $limit
+                              } LIMIT $limit }
+                            } group by ?s
                         }
                       } group by ?src ?dt
                     }
