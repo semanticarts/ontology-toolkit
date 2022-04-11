@@ -404,6 +404,8 @@ class OntoGraf:
             predicate_usage = list(self.select_query(query_text))
             logging.debug("%s items returned for %s", len(predicate_usage), predicate)
             for usage in predicate_usage:
+                if 'tgt' in usage and usage['tgt'] is None:
+                    del usage['tgt']
                 if 'src' not in usage or usage['src'] is None or int(usage.get('num', 0)) < self.threshold:
                     continue
                 self.record_predicate_usage(predicate, predicate_str, usage)
@@ -741,7 +743,11 @@ class OntoGraf:
             return
 
         # Determine the maximum number any edge occurs in the data, so the edge widths can be properly scaled
-        max_common = max(occurs for class_data in data_dict.values() for occurs in class_data['links'].values())
+        common_list = [
+            occurs for class_data in data_dict.values()
+            for occurs in class_data['links'].values()
+        ]
+        max_common = 0 if len(common_list) == 0 else max(common_list)
 
         max_instance = max(self.class_counts.values())
 
