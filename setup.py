@@ -17,7 +17,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=[
         'pyparsing==2.4.7',
-        'rdflib~=6.0.0',
+        'rdflib~=6.1.1',
         'pydot',
         'jinja2',
         'markdown',
