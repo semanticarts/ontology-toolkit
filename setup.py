@@ -20,7 +20,7 @@ setuptools.setup(
         'rdflib~=6.1.1',
         'pydot',
         'jinja2',
-        'markdown',
+        'markdown2',
         'pyyaml',
         'jsonschema>=3.2.0',
         'SPARQLWrapper>=1.8.5',

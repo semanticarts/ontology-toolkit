@@ -2,7 +2,7 @@ rdflib>=6.1.1
 pyshacl~=0.17.0
 pydot>=1.4.1
 jinja2>=2.11.2
-markdown>=3.2.1
+markdown2>=2.4.9
 pyyaml>=5.3.1
 
 pip>=19.0.3

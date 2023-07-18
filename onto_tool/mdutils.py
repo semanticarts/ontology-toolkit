@@ -6,7 +6,7 @@ The class md2html() has a template that calls bootstrap for styling
 """
 
 import jinja2
-import markdown
+import markdown2
 import io
 import shutil
 
@@ -50,8 +50,8 @@ class Markdown2HTML:
         Returns:
         docfile (file object): a file object containing the HTML5
         """
-        extensions = ['extra', 'smarty']
-        html = markdown.markdown(md, extensions=extensions, output_format='html5')
+        extensions = ['extra', 'smarty', 'tables']
+        html = markdown2.markdown(md, extras=extensions)
         doc = jinja2.Template(self.TEMPLATE).render(content=html)
         docfile = io.StringIO(doc)
         return docfile
