@@ -1,0 +1,14 @@
+@prefix : <https://data.clientX.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+:MyIndividual a :Resource ;
+    skos:prefLabel "Tom" .
+
+:myProperty a owl:DatatypeProperty ;
+    skos:prefLabel "my property" .
+
+:randomStub a :Stub .
+
+<https://data.clientX.com/d/ontoName>
+    a owl:Ontology .

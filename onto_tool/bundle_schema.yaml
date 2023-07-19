@@ -419,6 +419,12 @@ properties:
                     type: boolean
                   versionedDefinedBy:
                     type: boolean
+                  mode:
+                    type: string
+                    enum:
+                      - strict
+                      - full
+                      - all
         - if:
             properties:
               action:

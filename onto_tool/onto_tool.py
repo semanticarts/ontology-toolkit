@@ -103,6 +103,13 @@ def add_defined_by(g, ontology_iri, mode='strict', replace=False, versioned=Fals
         version_iri = next(g.objects(ontology_iri, OWL.versionIRI), None)
         if version_iri is not None:
             ontology_iri = version_iri
+    propFilter = ''
+    nonTypePropFilter = """
+        FILTER EXISTS {
+            ?defined ?anotherProp ?value .
+            FILTER (?anotherProp != rdf:type)
+        }
+    """
     if mode == 'strict':
         selector = """
           FILTER(?dtype IN (
@@ -110,21 +117,21 @@ def add_defined_by(g, ontology_iri, mode='strict', replace=False, versioned=Fals
             owl:AnnotationProperty, owl:Thing
           ))
         """
+        propFilter = nonTypePropFilter
     else:
         selector = "FILTER(?dtype != owl:Ontology)"
+        if mode == 'full':
+            propFilter = nonTypePropFilter
 
     query = """
         SELECT distinct ?defined ?label ?defBy WHERE {
           ?defined a ?dtype .
           %s
           FILTER(!ISBLANK(?defined))
-          FILTER EXISTS {
-            ?defined ?anotherProp ?value .
-            FILTER (?anotherProp != rdf:type)
-          }
+          %s
           OPTIONAL { ?defined rdfs:isDefinedBy ?defBy }
         }
-        """ % selector
+        """ % (selector, propFilter)
 
     definitions = g.query(
         query,
@@ -587,6 +594,7 @@ def __bundle_defined_by__(action, variables):
             shutil.copy(in_out['inputFile'], in_out['outputFile'])
         else:
             add_defined_by(g, ontology,
+                           mode=action['mode'] if 'mode' in action else 'strict',
                            replace=not __boolean_option__(action, 'retainDefinedBy', variables),
                            versioned=__boolean_option__(action, 'versionedDefinedBy', variables))
 

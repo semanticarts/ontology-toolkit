@@ -86,13 +86,14 @@ def configure_arg_parser():
                                '--in-place is specified.')
     update_parser.add_argument('-b', '--defined-by', action="store",
                                nargs="?", const='strict',
-                               choices=['all', 'strict'],
+                               choices=['all', 'full', 'strict'],
                                help='Add rdfs:isDefinedBy to every resource defined. '
                                'If the (default) "strict" argument is provided, only '
                                'owl:Class, owl:ObjectProperty, owl:DatatypeProperty, '
                                'owl:AnnotationProperty and owl:Thing entities will be '
-                               'annotated. If "all" is provided, every entity that has '
+                               'annotated. If "full" is provided, every entity that has '
                                'any properties other than rdf:type will be annotated. '
+                               'If "all" is provided, every entity will be annotated. '
                                'Will override any existing rdfs:isDefinedBy annotations '
                                'on the affected entities unless --retain-definedBy is '
                                'specified.')

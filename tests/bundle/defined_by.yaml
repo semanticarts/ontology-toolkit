@@ -1,0 +1,25 @@
+bundle: test
+variables:
+  input: "tests"
+  output: "tests/bundle"
+actions:
+- action: "definedBy"
+  message: "Adding default rdfs:isDefinedBy."
+  source: "{input}/bundle/defined_by.ttl"
+  target: "{output}/defined_by_default.ttl"
+- action: "definedBy"
+  message: "Adding strict rdfs:isDefinedBy."
+  source: "{input}/bundle/defined_by.ttl"
+  target: "{output}/defined_by_strict.ttl"
+  mode: "strict"
+- action: "definedBy"
+  message: "Adding full rdfs:isDefinedBy."
+  source: "{input}/bundle/defined_by.ttl"
+  target: "{output}/defined_by_full.ttl"
+  mode: "full"
+- action: "definedBy"
+  message: "Adding all rdfs:isDefinedBy."
+  source: "{input}/bundle/defined_by.ttl"
+  target: "{output}/defined_by_all.ttl"
+  mode: "all"
+

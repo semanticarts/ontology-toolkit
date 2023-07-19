@@ -82,9 +82,10 @@ optional arguments:
 
 The `export` sub-command will transform the ontology into the desired format, and remove version information, as required by tools such as Top Braid Composer.
 ```
-usage: onto_tool export [-h] [-f {xml,turtle,nt} | -c CONTEXT] [--debug]
-                        [-o OUTPUT] [-s] [-m IRI VERSION] [-b [{all,strict}]]
-                        [--retain-definedBy] [--versioned-definedBy]
+usage: onto_tool update [-h] [-f {xml,turtle,nt} | -i] [--debug] [-o OUTPUT]
+                        [-b [{all,full,strict}]] [--retain-definedBy]
+                        [--versioned-definedBy] [-v SET_VERSION]
+                        [--version-info [VERSION_INFO]] [-d DEPENDENCY VERSION]
                         [ontology [ontology ...]]
 
 positional arguments:
@@ -94,24 +95,28 @@ optional arguments:
   -h, --help            show this help message and exit
   -f {xml,turtle,nt}, --format {xml,turtle,nt}
                         Output format
-  -c CONTEXT, --context CONTEXT
-                        Export as N-Quads in CONTEXT.
+  -i, --in-place        Overwrite each input file with update, preserving format
   --debug               Emit verbose debug output
   -o OUTPUT, --output OUTPUT
-                        Path to output file.
-  -s, --strip-versions  Remove versions from imports.
-  -m IRI VERSION, --merge IRI VERSION
-                        Merge all inputs into a single ontology with the given
-                        IRI and version
-  -b [{all,strict}], --defined-by [{all,strict}]
-                        Add rdfs:isDefinedBy to every resource defined. If the
-                        (default) "strict" argument is provided, only
-                        owl:Class, owl:ObjectProperty, owl:DatatypeProperty,
-                        owl:AnnotationProperty and owl:Thing entities will be
-                        annotated. If "all" is provided, every entity that has
-                        any properties other than rdf:type will be annotated.
-  --retain-definedBy    When merging ontologies, retain existing values of
-                        rdfs:isDefinedBy
+                        Path to output file. Will be ignored if --in-place is specified.
+  -b [{all,full,strict}], --defined-by [{all,full,strict}]
+                        Add rdfs:isDefinedBy to every resource defined. If the (default)
+                        "strict" argument is provided, only owl:Class, owl:ObjectProperty,
+                        owl:DatatypeProperty, owl:AnnotationProperty and owl:Thing entities
+                        will be annotated. If "full" is provided, every entity that has any
+                        properties other than rdf:type will be annotated. If "all" is
+                        provided, every entity will be annotated. Will override any
+                        existing rdfs:isDefinedBy annotations on the affected entities
+                        unless --retain-definedBy is specified.
+  --retain-definedBy    Retain existing values of rdfs:isDefinedBy
+  --versioned-definedBy
+                        Use versionIRI for rdfs:isDefinedBy, when available
+  -v SET_VERSION, --set-version SET_VERSION
+                        Set the version of the defined ontology
+  --version-info [VERSION_INFO]
+                        Adjust versionInfo, defaults to "Version X.x.x"
+  -d DEPENDENCY VERSION, --dependency-version DEPENDENCY VERSION
+                        Update the import of DEPENDENCY to VERSION
 ```
 
 ### Graphic
@@ -358,9 +363,12 @@ emitted as a `INFO`-level log message prior to the execution of the action.
 ##### RDF Transformation
 
 - `definedBy`, which inspects each input file to identify a single defined ontology, and then
-  adds a `rdfs:isDefinedBy` property to every `owl:Class`, `owl:ObjectProperty`, `owl:DatatypeProperty`
-  and `owl:AnnotationProperty` defined in the file referencing the identified ontology. Existing
-  `rdfs:isDefinedBy` values are removed prior to the addition. Input and output file specification
+  adds a `rdfs:isDefinedBy` property to entities defined within that input file. If `mode` is
+  set to `strict` (default), the annotation is applied to every `owl:Class`, `owl:ObjectProperty`,
+  `owl:DatatypeProperty` and `owl:AnnotationProperty`. If `mode` is `full`, annotations are applied
+  to all entities that have any attributes other than `rdf:type`, and setting the mode to `all`
+  results in all entities receiving the annotation. Existing `rdfs:isDefinedBy` values are removed
+  prior to the addition. Input and output file specification
   options are identical to those used by the `copy` action.
 - `export`, which functions similarly to the command-line export functionality, gathering one or
   more input ontologies and exporting them as a single file, with some optional transformations,
