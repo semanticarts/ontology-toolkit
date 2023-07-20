@@ -332,10 +332,12 @@ emitted as a `INFO`-level log message prior to the execution of the action.
 - `mkdir`, which requires a `directory` attribute to specify the path of the directory to be created 
   (only if it doesn't already exist)
 - `copy`, which copies files into the bundle, and supports the following arguments:
-  - `source`, `target` and `includes` - if `includes` is not present, `source` and `target` are both
-    assumed to be file paths to a single file. If `includes` is provided, `source` and `target` are 
-    assumed to be directories, and each member of the `includes` list a glob pattern inside the
-    `source` directory.
+  - `source`, `target`, `includes` and `excludes` - if neither `includes` or `excludes` is present,
+   `source` and `target` are both  assumed to be file paths to a single file. If either`includes`
+    or `excludes` is provided, `source` and `target` are 
+    assumed to be directories, and each member of the `includes`/`excludes` lists is treated as a glob
+    pattern inside the `source` directory. If `includes` is not present, it's presumed to be `*`, and
+    `excludes` is applied after `includes`.
   - `rename` - If provided, must contain `from` and `to` attributes. When specified, each file
     is renamed as it is copied, where `from` is treated as a Python regular expression
     applied to the base name of the source file, and `to` is the substitution string which
@@ -365,10 +367,8 @@ emitted as a `INFO`-level log message prior to the execution of the action.
 - `export`, which functions similarly to the command-line export functionality, gathering one or
   more input ontologies and exporting them as a single file, with some optional transformations,
   depending on the following specified options:
-  - `source`, `target` and `includes` - if `includes` is not present, `source` is
-    assumed to be the path to a single file. If `includes` is provided, `source` is 
-    assumed to be a directory, and each member of the `includes` list a glob pattern inside the
-    `source` directory. `target` is always treated as a single file path.
+  - `source`, `target`, `includes` and `excludes` - treated identically to the `copy` operation
+    described above, except `target` is always treated as a single file path.
   - `merge` - if provided, it must have two mandatory fields, `iri` and `version`. In this case, all
     ontologies declared in the input files are removed, and a single new ontologies, specified by the 
     `iri` is created, using `version` to build `owl:versionInfo` and `owl:versionIRI`. Any imports on
@@ -387,11 +387,11 @@ emitted as a `INFO`-level log message prior to the execution of the action.
 - `transform`, which applies the specified tool to a set of input files, and supports the following
   arguments:
   - `tool`, which references the `name` of a tool which must be defined in the `tools` section.
-  - `source`, `target` and `includes`, which function just like they do for the `copy` and `move`
+  - `source`, `target`, `includes` and `excludes`, which function just like they do for the `copy` and `move`
     actions, with each input and output path bound into the `inputFile` and `outputFile` variables
     before the tool arguments are interpreted.
   - `replace` and `rename`, which are applied after the tool invocation, and work as described above.
-- `sparql` reads RDF files provided via the `source` and `includes` options and executes a SPARQL
+- `sparql` reads RDF files provided via the `source` and `includes`/`excludes` options and executes a SPARQL
   query on the resulting combined graph.
     * If the `query` option is a valid file path, the query is read from that file,
       otherwise the contents of the `query` option are interpreted as the query.
@@ -437,14 +437,14 @@ emitted as a `INFO`-level log message prior to the execution of the action.
   
 ##### Utility Actions
 - `markdown` transforms a `.md` file referenced in `source` into an HTML output specified in `target`.
-- `graph` reads RDF files provided via the `source` and `includes` options and generates a graphical
+- `graph` reads RDF files provided via the `source` and `includes`/`excludes` options and generates a graphical
   representation of the ontology, as in the `graphic` sub-command described above. Both `.dot` and
   `.png` outputs are written to the directory specified in the `target` option, and `title` and 
   `version` attributes configure the title on the generated graph. If `compact` is specified as
   `True`, a concise graph including only ontology names and imports is generated.
 
 ##### Validation
-The `verify` action reads RDF files provided via the `source` and `includes` options and performs validation on the
+The `verify` action reads RDF files provided via the `source` and `includes`/`excludes` options and performs validation on the
 resulting combined graph. If the validation fails, the bundle process exits with a non-zero status and
 does not execute subsequent actions. The type of verification performed depends on the 
 value of the `type` option:
@@ -462,7 +462,7 @@ value of the `type` option:
         filter not exists {{ ?unlabeled skos:prefLabel ?label }}
       }}
     ```
-  * If `queries` is provided, a list of queries will be built from the `source` and `includes`
+  * If `queries` is provided, a list of queries will be built from the `source` and `includes`/`excludes`
     sub-options. The queries will be executed in order specified. If `stopOnFail` is omitted or
     is `true`, the first  query that produces a failing result will cause `verify` to abort. If
     `stopOnFail` is `false`, all queries will be executed regardless of failures, and the value
@@ -498,7 +498,7 @@ value of the `type` option:
       expected: false
   ```
 * If `type` is `shacl`, a SHACL shape graph will be constructed from the file specified via the `shapes`
-  option (which must have a `source`, and optionally `includes`), with the bundle terminating only if
+  option (which must have a `source`, and optionally `includes`/`excludes`), with the bundle terminating only if
   any `sh:Violation` results are present, unless the `failOn` option specifies otherwise.`
   The report is emitted to the log, and saved as Turtle to the path specified in the `target` option if it's provided.
   For example:
