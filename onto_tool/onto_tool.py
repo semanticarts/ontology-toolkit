@@ -1,5 +1,6 @@
 """Toolkit for ontology maintenance and release."""
 import io
+import itertools
 import logging
 import os
 import sys
@@ -461,7 +462,7 @@ def __bundle_file_list(action, variables, ignore_target=False):
         is specified.
 
     """
-    if 'includes' in action:
+    if 'includes' in action or 'excludes' in action:
         # source and target are directories, apply glob
         src_dir = action['source'].format(**variables)
         if not ignore_target:
@@ -471,11 +472,16 @@ def __bundle_file_list(action, variables, ignore_target=False):
         else:
             # There are times when
             tgt_dir = None
-        for pattern in action['includes']:
+        include_pattern = action['includes'] if 'includes' in action else '*'
+        excluded_files = set()
+        if 'excludes' in action:
+            excluded_files = set(itertools.chain.from_iterable(
+                glob(os.path.join(src_dir, pattern)) for pattern in action['excludes']))
+        for pattern in include_pattern:
             matches = list(glob(os.path.join(src_dir, pattern)))
             if not matches and not any(wildcard in pattern for wildcard in '[]*?'):
                 logging.warning('%s not found in %s', pattern, src_dir)
-            for input_file in matches:
+            for input_file in (m for m in matches if not m in excluded_files):
                 if ignore_target:
                     output_file = None
                 else:
@@ -630,13 +636,16 @@ def __bundle_move__(action, variables):
 def __bundle_markdown__(action, variables):
     logging.debug('Markdown %s', action)
     conv = Markdown2HTML()
-    filepath_in = action['source'].format(**variables)
-    filepath_out = action['target'].format(**variables)
-    md = open(filepath_in).read()
-    converted_md = conv.md2html(md)
-    with open(filepath_out, 'w') as fd:
-        converted_md.seek(0)
-        shutil.copyfileobj(converted_md, fd, -1)
+    logging.debug('Markdown %s', action)
+    # The default rename is *.md -> *.html
+    if not 'rename' in action:
+        action['rename'] = {'from': "(.*)\\.md", 'to': "\\g<1>.html"}
+    for in_out in __bundle_file_list(action, variables):
+        md = open(in_out['inputFile']).read()
+        converted_md = conv.md2html(md)
+        with open(in_out['outputFile'], 'w') as fd:
+            converted_md.seek(0)
+            shutil.copyfileobj(converted_md, fd, -1)
 
 
 @register(name="graph")

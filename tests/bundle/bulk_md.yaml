@@ -1,0 +1,25 @@
+bundle: test
+variables:
+  input: "tests/bundle"
+  output: "tests/bundle"
+actions:
+- action: "markdown"
+  message: "Include w/ no exclude"
+  source: "{input}/bulk_md"
+  target: "{output}/bulk_md/inc_no_exc"
+  includes:
+    - "a*"
+- action: "markdown"
+  message: "Exclude w/ no include"
+  source: "{input}/bulk_md"
+  target: "{output}/bulk_md/exc_no_inc"
+  excludes:
+    - "b*"
+- action: "markdown"
+  message: "Include and exclude"
+  source: "{input}/bulk_md"
+  target: "{output}/bulk_md/inc_and_exc"
+  includes:
+    - "*.md"
+  excludes:
+    - "a*"
