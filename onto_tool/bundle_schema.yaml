@@ -24,7 +24,7 @@ definitions:
       - iri
       - version
     additionalProperties: false
-  include_list:
+  pattern_list:
     type: array
     items:
       $ref: '#/definitions/non_empty_string'
@@ -40,9 +40,9 @@ definitions:
       replace:
         $ref: '#/definitions/from_to'
       includes:
-        $ref: '#/definitions/include_list'
+        $ref: '#/definitions/pattern_list'
       excludes:
-        $ref: '#/definitions/include_list'
+        $ref: '#/definitions/pattern_list'
     required:
       - source
       - target
@@ -60,7 +60,9 @@ definitions:
               source:
                 $ref: '#/definitions/non_empty_string'
               includes:
-                $ref: '#/definitions/include_list'
+                $ref: '#/definitions/pattern_list'
+              excludes:
+                $ref: '#/definitions/pattern_list'
             required:
               - source
         required:
@@ -199,7 +201,9 @@ properties:
                         source:
                           $ref: '#/definitions/non_empty_string'
                         includes:
-                          $ref: '#/definitions/include_list'
+                          $ref: '#/definitions/pattern_list'
+                        excludes:
+                          $ref: '#/definitions/pattern_list'
                         stopOnFail:
                           type: boolean
                         expected:
@@ -220,7 +224,9 @@ properties:
                         source:
                           $ref: '#/definitions/non_empty_string'
                         includes:
-                          $ref: '#/definitions/include_list'
+                          $ref: '#/definitions/pattern_list'
+                        excludes:
+                          $ref: '#/definitions/pattern_list'
                         target:
                           $ref: '#/definitions/non_empty_string'
                       required:
@@ -239,7 +245,9 @@ properties:
                           target:
                             $ref: '#/definitions/non_empty_string'
                           includes:
-                            $ref: '#/definitions/include_list'
+                            $ref: '#/definitions/pattern_list'
+                          excludes:
+                            $ref: '#/definitions/pattern_list'
                           format:
                             type: string
                             enum:
@@ -287,7 +295,9 @@ properties:
                     source:
                       $ref: '#/definitions/non_empty_string'
                     includes:
-                      $ref: '#/definitions/include_list'
+                      $ref: '#/definitions/pattern_list'
+                    excludes:
+                      $ref: '#/definitions/pattern_list'
                     target:
                       $ref: '#/definitions/non_empty_string'
                     inference:
@@ -308,7 +318,9 @@ properties:
                         source:
                           $ref: '#/definitions/non_empty_string'
                         includes:
-                          $ref: '#/definitions/include_list'
+                          $ref: '#/definitions/pattern_list'
+                        excludes:
+                          $ref: '#/definitions/pattern_list'
                   required:
                     - source
                     - shapes
@@ -328,7 +340,9 @@ properties:
                     target:
                       $ref: '#/definitions/non_empty_string'
                     includes:
-                      $ref: '#/definitions/include_list'
+                      $ref: '#/definitions/pattern_list'
+                    excludes:
+                      $ref: '#/definitions/pattern_list'
                     eachFile:
                       type: boolean
                     format:
