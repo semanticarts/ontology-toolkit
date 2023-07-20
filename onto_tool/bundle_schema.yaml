@@ -41,6 +41,8 @@ definitions:
         $ref: '#/definitions/from_to'
       includes:
         $ref: '#/definitions/include_list'
+      excludes:
+        $ref: '#/definitions/include_list'
     required:
       - source
       - target
@@ -377,14 +379,7 @@ properties:
               action:
                 const: markdown
           then:
-            properties:
-              source:
-                $ref: '#/definitions/non_empty_string'
-              target:
-                $ref: '#/definitions/non_empty_string'
-            required:
-              - source
-              - target
+            $ref: '#/definitions/bulk_file_operation'
         - if:
             properties:
               action:
