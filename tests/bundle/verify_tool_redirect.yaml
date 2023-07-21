@@ -1,0 +1,21 @@
+bundle: test
+variables:
+  input: "tests/bundle"
+  output: "tests/bundle"
+tools:
+  - name: 'echo_results'
+    type: 'shell'
+    arguments:
+      - '/bin/cat'
+      - '{input}/verify_fixed_error.ttl'
+actions:
+  - action: 'verify'
+    type: 'tool'
+    tool: 'echo_results'
+    source: '{input}'
+    includes:
+      - 'verify_data.ttl'
+    shapes:
+      source: '{input}/verify_shacl_shapes.ttl'
+    redirectOutput: true
+    target: '{output}/verify_tool_redirect.ttl'

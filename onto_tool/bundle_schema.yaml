@@ -185,6 +185,7 @@ properties:
                   - ask
                   - select
                   - construct
+                  - tool
             allOf:
               - if:
                   properties:
@@ -307,9 +308,44 @@ properties:
                           $ref: '#/definitions/non_empty_string'
                         includes:
                           $ref: '#/definitions/include_list'
+                      required:
+                        - source
                   required:
                     - source
                     - shapes
+              - if:
+                  properties:
+                    type:
+                      const: tool
+                then:
+                  properties:
+                    tool:
+                      $ref: '#/definitions/non_empty_string'
+                    source:
+                      $ref: '#/definitions/non_empty_string'
+                    includes:
+                      $ref: '#/definitions/include_list'
+                    redirectOutput:
+                      type: boolean
+                    target:
+                      $ref: '#/definitions/non_empty_string'
+                    failOn:
+                      type: string
+                      enum:
+                        - "warning"
+                        - "violation"
+                    shapes:
+                      type: object
+                      properties:
+                        source:
+                          $ref: '#/definitions/non_empty_string'
+                        includes:
+                          $ref: '#/definitions/include_list'
+                      required:
+                        - source
+                  required:
+                    - tool
+                    - source
             required:
               - type
         - if:

@@ -2,6 +2,8 @@ from onto_tool import onto_tool
 import csv
 from os.path import isfile
 from pytest import raises
+import pytest
+import sys
 import re
 from rdflib import Graph
 from rdflib.namespace import Namespace, RDF
@@ -130,6 +132,44 @@ def test_verify_shacl(caplog):
 
     validation_graph = Graph()
     validation_graph.parse('tests-output/bundle/verify_shacl_errors.ttl', format='turtle')
+    sh = Namespace('http://www.w3.org/ns/shacl#')
+    errors = [validation_graph.subjects(RDF.type, sh.ValidationResult)]
+    assert len(errors) == 1
+
+@pytest.mark.skipif(sys.platform == 'win32', reason="No /bin/cp")
+def test_verify_tool_shell(caplog):
+    with raises(SystemExit) as wrapped_exit:
+        onto_tool.main([
+            'bundle', '-v', 'output', 'tests-output/bundle', 'tests/bundle/verify_tool.yaml'
+        ])
+    assert wrapped_exit.type == SystemExit
+    assert wrapped_exit.value.code == 1
+
+    logs = caplog.text
+    assert 'Tool verification' in logs
+    assert 'Fake Violation' in logs
+
+    validation_graph = Graph()
+    validation_graph.parse('tests-output/bundle/verify_tool_copy.ttl', format='turtle')
+    sh = Namespace('http://www.w3.org/ns/shacl#')
+    errors = [validation_graph.subjects(RDF.type, sh.ValidationResult)]
+    assert len(errors) == 1
+
+@pytest.mark.skipif(sys.platform == 'win32', reason="No /bin/cp")
+def test_verify_tool_shell_redirect(caplog):
+    with raises(SystemExit) as wrapped_exit:
+        onto_tool.main([
+            'bundle', '-v', 'output', 'tests-output/bundle', 'tests/bundle/verify_tool_redirect.yaml'
+        ])
+    assert wrapped_exit.type == SystemExit
+    assert wrapped_exit.value.code == 1
+
+    logs = caplog.text
+    assert 'Tool verification' in logs
+    assert 'Fake Violation' in logs
+
+    validation_graph = Graph()
+    validation_graph.parse('tests-output/bundle/verify_tool_redirect.ttl', format='turtle')
     sh = Namespace('http://www.w3.org/ns/shacl#')
     errors = [validation_graph.subjects(RDF.type, sh.ValidationResult)]
     assert len(errors) == 1

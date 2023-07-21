@@ -1,0 +1,13 @@
+@prefix : <http://example.com/> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+[] a sh:ValidationReport ;
+    sh:conforms false ;
+    sh:result [ a sh:ValidationResult ;
+            sh:focusNode :fails ;
+            sh:resultMessage "Fake Violation Report" ;
+            sh:resultPath :fake_property ;
+            sh:resultSeverity sh:Violation ;
+            sh:value :fake_value ] .
+
