@@ -139,7 +139,7 @@ class OntoGraf:
             self.cached_data[id] = data
             return data
         else:
-            return self.local_select_query(query)
+            return list(self.local_select_query(query))
 
     @staticmethod
     def strip_uri(uri):
