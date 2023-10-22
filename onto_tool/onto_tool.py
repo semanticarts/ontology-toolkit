@@ -312,6 +312,10 @@ def generate_graphic(action, onto_files, endpoint, **kwargs):
     concentrate_links: int
         When the number links originating from the same class that share a single predicate exceed this threshold,
         use more compact display. Setting the value to 0 disables this behavior.
+    cache: TextIOWrapper
+        Read cached query results 
+    save_cache: TextIOWrapper
+        Save query results as JSON to use with --cache 
 
     Returns
     -------
@@ -320,6 +324,9 @@ def generate_graphic(action, onto_files, endpoint, **kwargs):
     """
     all_files = [file for ref in onto_files for file in expand_file_ref(ref)]
     og = OntoGraf(all_files, repo=endpoint, **kwargs)
+    if kwargs['cache'] and (endpoint or all_files):
+        logging.warning('Reading cached data from %s, ignoring endpoint/files',
+                        kwargs['cache'].name)
     if endpoint and all_files:
         logging.warning('Endpoint specified, ignoring files')
     if action == 'ontology':
@@ -1347,7 +1354,9 @@ def main(arguments):
                          include=args.include, exclude=args.exclude,
                          include_pattern=args.include_pattern,
                          exclude_pattern=args.exclude_pattern,
-                         show_shacl=args.show_shacl)
+                         show_shacl=args.show_shacl,
+                         cache=args.cache,
+                         save_cache=args.save_cache)
         return
 
     of = 'pretty-xml' if args.format == 'xml' else args.format

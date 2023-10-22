@@ -8,6 +8,7 @@ and then presents the results as a graphviz 'dot' file and a .png file.
 """
 
 import datetime
+import json
 import logging
 import os
 import re
@@ -37,10 +38,24 @@ class OntoGraf:
         version = kwargs.get('version')
         if not version:
             version = datetime.datetime.now().isoformat()[:10]
-        if repo:
+
+        self.cached_data = {}
+        if kwargs.get('cache'):
+            self.cache = json.load(kwargs['cache'])
+            self.save_cache = None # duplicative
+        else:
+            self.cache = None
+            self.save_cache = kwargs.get('save_cache')
+
+        if self.cache:
+            self.title = self.cache['title']
+            out_filename = self.cache['out_filename']
+        elif repo:
             anonymized, repo_base = self.anonymize_url(repo)
             self.title = (title or anonymized) + ': ' + version
             out_filename = repo_base
+            self.cached_data['title'] = 'Cached ' + self.title
+            self.cached_data['out_filename'] = 'cached_' + out_filename
         else:
             self.title = f'{title or "Gist"} Ontology: {version}'
             out_filename = f'{title or "Gist"}{version}'
@@ -105,13 +120,24 @@ class OntoGraf:
     def local_select_query(self, query):
         """Execute SPARQL SELECT query on local data, return results as generator."""
         logging.debug(f"Local Query\n {query}")
+        if not self.data:
+            self.data = Graph()
+            for file_path in self.files:
+                filename = os.path.basename(file_path)
+                logging.debug('Parsing %s for documentation', filename)
+                self.data.parse(file_path, format=guess_format(file_path))
+
         results = self.data.query(query)
         for result in results:
             yield dict((str(k), str(v) if v is not None else None) for k, v in zip(results.vars, result))
 
-    def select_query(self, query):
+    def select_query(self, query:str, id: str):
+        if self.cache:
+            return self.cache[id]
         if self.repo:
-            return self.remote_select_query(query)
+            data = list(self.remote_select_query(query))
+            self.cached_data[id] = data
+            return data
         else:
             return self.local_select_query(query)
 
@@ -370,15 +396,7 @@ class OntoGraf:
         }
         """).substitute(language=self.label_lang)
         self.node_data = {}
-        if self.repo:
-            all_predicates = list(self.remote_select_query(predicate_query))
-        else:
-            self.data = Graph()
-            for file_path in self.files:
-                filename = os.path.basename(file_path)
-                logging.debug('Parsing %s for documentation', filename)
-                self.data.parse(file_path, format=guess_format(file_path))
-            all_predicates = list(self.local_select_query(predicate_query))
+        all_predicates = self.select_query(predicate_query, 'all_predicates')
 
         hidden_predicates = set(predicate['predicate'] for predicate in all_predicates
                                 if self.hidden(predicate['predicate']))
@@ -401,7 +419,7 @@ class OntoGraf:
                                     suffix=predicate_str + ' ' * 20, length=50)
             pre_time = perf_counter()
             query_text = self.create_predicate_query(predicate, predicate_row.get('type'), self.limit)
-            predicate_usage = list(self.select_query(query_text))
+            predicate_usage = list(self.select_query(query_text, predicate))
             logging.debug("%s items returned for %s", len(predicate_usage), predicate)
             for usage in predicate_usage:
                 if 'tgt' in usage and usage['tgt'] is None:
@@ -419,6 +437,9 @@ class OntoGraf:
 
         if self.show_shacl:
             self.add_shacl_coloring()
+
+        if self.save_cache:
+            json.dump(self.cached_data, self.save_cache)
 
     def build_class_hierarchy(self):
         inheritance_query = Template("""
@@ -447,10 +468,7 @@ class OntoGraf:
           }
         }
         """).substitute(language=self.label_lang)
-        if self.repo:
-            parents = list(self.remote_select_query(inheritance_query))
-        else:
-            parents = list(self.local_select_query(inheritance_query))
+        parents = self.select_query(inheritance_query, 'parents')
 
         for inheritance_info in parents:
             self.superclasses[inheritance_info['class']].add(inheritance_info['parent'])
@@ -483,10 +501,8 @@ class OntoGraf:
         self.inheritance = eval_order
 
         class_query = self.create_class_count_query(self.limit)
-        if self.repo:
-            class_counts = list(self.remote_select_query(class_query))
-        else:
-            class_counts = list(self.local_select_query(class_query))
+        class_counts = self.select_query(class_query, 'class_counts')
+
         for instance_info in class_counts:
             self.class_counts[self.deepest_class(instance_info['src'])] += int(instance_info['num'])
 
@@ -561,7 +577,7 @@ class OntoGraf:
               { ?shape (sh:and|sh:or|sh:xone|sh:not|rdf:first|rdf:rest)+/sh:path ?property }
             }
             """
-        shacl_data = self.remote_select_query(shacl_query) if self.repo else self.local_select_query(shacl_query)
+        shacl_data = self.select_query(shacl_query, 'shacl')
         for row in shacl_data:
             self.shapes[row['class']].append(row['property'])
 

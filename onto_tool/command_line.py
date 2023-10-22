@@ -165,8 +165,12 @@ def configure_arg_parser():
     graphic_parser = subparsers.add_parser('graphic',
                                            help='Create PNG graphic and dot'
                                            ' file from OWL files or SPARQL Endpoint')
-    graphic_parser.add_argument("-e", "--endpoint", action="store",
+    data_source_group = graphic_parser.add_argument_group(title="Remote data source")
+    data_source = data_source_group.add_mutually_exclusive_group()
+    data_source.add_argument("-e", "--endpoint", action="store",
                                 help="URI of SPARQL endpoint to use to gather data")
+    data_source.add_argument("--cache", type=argparse.FileType("r"),
+                                help="Use cached data from previous queries")
     which_graphic = graphic_parser.add_mutually_exclusive_group()
     which_graphic.add_argument("--schema", dest="action", action="store_const",
                                const="ontology", default="ontology",
@@ -182,6 +186,8 @@ def configure_arg_parser():
                                      " entities defined by each ontology.")
     graphic_parser.add_argument('--debug', action="store_true",
                                 help="Emit verbose debug output")
+    graphic_parser.add_argument('--save-cache', type=argparse.FileType("w", encoding="utf-8"),
+                                help="Persist query results, which can be used with '--cache'")
     graphic_parser.add_argument('-o', '--output', action="store",
                                 default=os.getcwd(),
                                 help="Output directory for generated graphics")
