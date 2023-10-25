@@ -1,11 +1,13 @@
+"""Utility functions to execute SPARQL queries and unpack results."""
 import re
-from urllib.parse import urlparse, urlunparse
 from typing import Iterator
+from urllib.parse import urlparse, urlunparse
 
-from SPARQLWrapper import SPARQLWrapper, POST, BASIC, JSON, CSV
+from SPARQLWrapper import BASIC, CSV, JSON, POST, SPARQLWrapper
 
 
 def create_endpoint(url, user=None, password=None) -> SPARQLWrapper:
+    """Wrap specified endpoint with provided BasicAuth credentials."""
     repo_url = urlparse(url)
 
     sparql = SPARQLWrapper(urlunparse((repo_url.scheme,
@@ -22,6 +24,7 @@ def create_endpoint(url, user=None, password=None) -> SPARQLWrapper:
 
 
 def select_query(sparql: SPARQLWrapper, query: str) -> Iterator[dict]:
+    """Execute SELECT query, returning each result row as dict."""
     sparql.setQuery(query)
     sparql.setReturnFormat(JSON)
     results = sparql.query().convert()
@@ -34,6 +37,7 @@ def select_query(sparql: SPARQLWrapper, query: str) -> Iterator[dict]:
 
 
 def select_query_csv(sparql: SPARQLWrapper, query: str) -> bytes:
+    """Execute SELECT query, returning results as CSV text."""
     sparql.setQuery(query)
     sparql.setReturnFormat(CSV)
     results = sparql.query().convert()
