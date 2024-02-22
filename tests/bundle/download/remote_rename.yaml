@@ -1,0 +1,24 @@
+bundle: test
+variables:
+  input: "https://w3id.org/semanticarts/ontology/"
+  output: "tests/bundle/download"
+actions:
+  - action: 'copy'
+    source: '{input}'
+    includes:
+      - versioning
+    target: "{output}"
+    rename:
+        from: "^(.*)$"
+        to: "\\g<1>.ttl"
+  - action: 'sparql'
+    source: '{output}'
+    includes:
+      - '*.ttl'
+    target: '{output}/sparql.csv'
+    query: >
+      prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?def_by
+      WHERE {{
+        [ rdfs:isDefinedBy ?def_by ] .
+      }}

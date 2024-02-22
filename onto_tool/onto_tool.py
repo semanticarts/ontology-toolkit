@@ -12,7 +12,7 @@ from rdflib.util import guess_format
 
 import onto_tool
 
-from .bundle import bundle_ontology
+from .bundle import BundleFileException, bundle_ontology
 from .command_line import configure_arg_parser
 from .ontograph import OntoGraf
 from .utils import isfile, expand_file_ref, perform_export, find_single_ontology, \
@@ -292,7 +292,10 @@ def main(arguments):
         __suppress_ssl_certificate_check()
 
     if args.command == 'bundle':
-        bundle_ontology(args.variables, args.bundle)
+        try:
+            bundle_ontology(args.variables, args.bundle)
+        except BundleFileException as bfe:
+            logging.error('Encountered %s', str(bfe))
         return
 
     if args.command == 'graphic':

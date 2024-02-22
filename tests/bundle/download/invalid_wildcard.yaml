@@ -1,0 +1,10 @@
+bundle: test
+variables:
+  input: "https://w3id.org/semanticarts/ontology/"
+  output: "tests/bundle/download"
+actions:
+  - action: 'move'
+    source: '{input}'
+    target: "{output}/"
+    excludes:
+      - allThe*.ttl

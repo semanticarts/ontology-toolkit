@@ -21,6 +21,7 @@ setuptools.setup(
         'pydot',
         'jinja2',
         'markdown2',
+        'requests==2.22.0',
         'pyyaml==5.2',
         'jsonschema==3.2.0',
         'SPARQLWrapper==1.8.4',
@@ -46,5 +47,5 @@ setuptools.setup(
             "onto_tool = onto_tool.onto_tool:run_tool"
         ]
     },
-    python_requires='>=3.8',
+    python_requires='>=3.9',
 )
