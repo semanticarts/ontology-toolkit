@@ -16,18 +16,19 @@ setuptools.setup(
     url="https://github.com/semanticarts/ontology-toolkit",
     packages=setuptools.find_packages(),
     install_requires=[
-        'pyparsing==2.4.7',
-        'rdflib~=6.1.1',
+        'pyparsing',
+        'rdflib==7.0.0',
         'pydot',
         'jinja2',
         'markdown2',
-        'pyyaml',
-        'jsonschema>=3.2.0',
-        'SPARQLWrapper>=1.8.5',
-        'pyshacl~=0.17.0'
+        'pyyaml==5.2',
+        'jsonschema==3.2.0',
+        'SPARQLWrapper==1.8.4',
+        'pyshacl==0.19.0'
     ],
     tests_require=[
-        'pytest'
+        'pytest',
+        'pytest-cov'
     ],
     classifiers=[
         "Development Status :: 5 - Production/Stable",

@@ -1,3 +1,4 @@
+"""Command line options for onto_tool."""
 import argparse
 import os
 import re
@@ -31,6 +32,7 @@ class UriValidator(argparse.Action):
 
     @staticmethod
     def valid_uri(parser, values):
+        """Validate URI argument."""
         uri = None
         if _uri_validator(values):
             uri = URIRef(values)
@@ -65,6 +67,183 @@ def configure_arg_parser():
                         help="Report onto-tool version and exit")
     subparsers = parser.add_subparsers(help='sub-command help', dest='command')
 
+    define_update_parser(subparsers)
+
+    define_export_parser(subparsers)
+
+    bundle_parser = subparsers.add_parser(
+        'bundle', help='Bundle ontology for release')
+    bundle_parser.add_argument('--debug', action="store_true",
+                               help="Emit verbose debug output")
+    bundle_parser.add_argument('-v', '--variable', action="append",
+                               dest='variables',
+                               metavar=('VARIABLE', 'VALUE'),
+                               nargs=2, default=[],
+                               help='Set value of VARIABLE to VALUE')
+    bundle_parser.add_argument('bundle', default='bundle.json',
+                               help="JSON or YAML bundle definition")
+
+    define_graphic_parser(subparsers)
+    return parser
+
+
+def define_graphic_parser(subparsers):
+    """Command line options for the 'graphic' subcommand."""
+    graphic_parser = subparsers.add_parser('graphic',
+                                           help='Create PNG graphic and dot'
+                                           ' file from OWL files or SPARQL Endpoint')
+    data_source_group = graphic_parser.add_argument_group(
+        title="Remote data source")
+    data_source = data_source_group.add_mutually_exclusive_group()
+    data_source.add_argument("-e", "--endpoint", action="store",
+                             help="URI of SPARQL endpoint to use to gather data")
+    data_source.add_argument("--cache", type=argparse.FileType("r"),
+                             help="Use cached data from previous queries")
+    which_graphic = graphic_parser.add_mutually_exclusive_group()
+    which_graphic.add_argument("--schema", dest="action", action="store_const",
+                               const="ontology", default="ontology",
+                               help="Generate ontology import graph (default)")
+    which_graphic.add_argument("--data", dest="action", action="store_const",
+                               const="instances",
+                               help="Analyze instances for types and links")
+    graphic_parser.add_argument("--single-ontology-graphs", action="store_true",
+                                help="If specified in combination with --endpoint"
+                                     " when generating a schema graph, assume that every"
+                                     " ontology is in its own named graph in the triple store."
+                                     " Otherwise rdfs:isDefinedBy will be used to locate"
+                                     " entities defined by each ontology.")
+    graphic_parser.add_argument('--debug', action="store_true",
+                                help="Emit verbose debug output")
+    graphic_parser.add_argument('--save-cache', type=argparse.FileType("w", encoding="utf-8"),
+                                help="Persist query results, which can be used with '--cache'")
+    graphic_parser.add_argument('-o', '--output', action="store",
+                                default=os.getcwd(),
+                                help="Output directory for generated graphics")
+    graphic_parser.add_argument(
+        '--show-shacl', action="store_true",
+        help="Attempts to discover which classes and properties have "
+        "corresponding SHACL shapes and colors them green on the graph."
+        " This detection relies on the presence of sh:targetClass "
+        "targeting, and can be confused by complex logical shapes "
+        "or Advanced SHACL features such as SPARQL queries.")
+    graphic_parser.add_argument(
+        "--link-concentrator-threshold", type=int, default=3,
+        help="When the number links originating from the same class that share a "
+        "single predicate exceed this threshold (default 10), use more compact "
+        "display. Setting the value to 0 disables this behavior.")
+    sampling_limits = graphic_parser.add_argument_group(
+        title='Sampling Limits')
+    sampling_limits.add_argument(
+        "--instance-limit", type=int, default=500000,
+        help="Specify a limit on how many triples to consider that use any one"
+        " predicate to find (default 500000). This option may result in an"
+        " incomplete version of the diagram, missing certain links.")
+    sampling_limits.add_argument("--predicate-threshold", type=int, default=10,
+                                 help="Ignore predicates which occur fewer than "
+                                 "PREDICATE_THRESHOLD times (default 10)")
+    graph_filters = graphic_parser.add_argument_group(
+        title="Filters (only one can be used)")
+    scope_control = graph_filters.add_mutually_exclusive_group()
+    scope_control.add_argument(
+        "--include", nargs="*", default=[],
+        action=UriValidator,
+        help="If specified for --schema, only ontologies matching the specified"
+        " URIs will be shown in full detail. If specified with --data, only"
+        " triples in the named graphs mentioned will be considered (this also"
+        " excludes any triples in the default graph).")
+    scope_control.add_argument(
+        "--include-pattern", nargs="*", default=[],
+        metavar="INCLUDE_REGEX",
+        help="If specified for --schema, only ontologies matching the specified"
+        " URI pattern will be shown in full detail. If specified with --data,"
+        " only triples in the named graphs matching the pattern"
+        " will be considered (this also excludes any triples in the default"
+        " graph). For large graphs this option is significantly slower than"
+        " using --include.")
+    scope_control.add_argument(
+        "--exclude", nargs="*", default=[],
+        action=UriValidator,
+        help="If specified for --schema, ontologies matching the specified"
+        " URIs will be omitted from the graph. If specified with --data, "
+        " triples in the named graphs mentioned will be excluded (this also"
+        " excludes any triples in the default graph).")
+    scope_control.add_argument(
+        "--exclude-pattern", nargs="*", default=[],
+        metavar="EXCLUDE_REGEX",
+        help="If specified for --schema, ontologies matching the specified"
+        " URI pattern will be omitted from the graph. If specified with --data,"
+        " triples in the named graphs matching the pattern"
+        " will be ignored (this also excludes any triples in the default"
+        " graph). For large graphs this option is significantly slower than"
+        " using --exclude.")
+    graphic_parser.add_argument('-v', '--version', help="Version to place in graphic",
+                                action="store")
+    graphic_parser.add_argument(
+        '-w', '--wee', nargs="*", default=None,
+        help="For ontologies matching the patterns specified, only render "
+        "the name and import information. If no patterns are specified, applies "
+        "to all ontologies.")
+    graphic_parser.add_argument(
+        '--label-language', action="store", default="en",
+        help="In case entities have labels in multiple languages, select either "
+        "the specified language (default: en) or a non-lanugage label.")
+    graphic_parser.add_argument('--hide', nargs="*", default=[],
+                                help="When visualizing data, hide classes and properties matching"
+                                "the regex patterns specified with this option.")
+    graphic_parser.add_argument("--no-image", action="store_true",
+                                help="Do not generate PNG image, only .dot output.")
+    graphic_parser.add_argument(
+        "-t", "--title", action="store",
+        help="Title to use for graph. If not supplied, the repo URI will be used if"
+        " graphing an endpoint, or 'Gist' if graphing local files.")
+    graphic_parser.add_argument('ontology', nargs="*", default=[],
+                                help="Ontology file, directory or name pattern")
+
+
+def define_export_parser(subparsers):
+    """Command line options for the 'export' subcommand."""
+    export_parser = subparsers.add_parser('export', help='Export ontology')
+
+    format_parser = export_parser.add_mutually_exclusive_group()
+    format_parser.add_argument('-f', '--format', action='store',
+                               default='turtle',
+                               choices=['xml', 'turtle', 'nt'],
+                               help='Output format')
+    format_parser.add_argument('-c', '--context', action=UriValidator,
+                               help='Export as N-Quads in CONTEXT.')
+
+    export_parser.add_argument('--debug', action="store_true",
+                               help="Emit verbose debug output")
+    export_parser.add_argument('-o', '--output',
+                               type=argparse.FileType('w', encoding='utf-8'),
+                               default=sys.stdout,
+                               help='Path to output file.')
+    export_parser.add_argument('-s', '--strip-versions', action="store_true",
+                               help='Remove versions from imports.')
+    export_parser.add_argument('-m', '--merge', action=OntologyUriValidator, nargs=2,
+                               metavar=('IRI', 'VERSION'),
+                               help='Merge all inputs into a single ontology'
+                               ' with the given IRI and version')
+    export_parser.add_argument('-b', '--defined-by', action="store",
+                               nargs="?", const='strict',
+                               choices=['all', 'strict'],
+                               help='Add rdfs:isDefinedBy to every resource defined. '
+                               'If the (default) "strict" argument is provided, only '
+                               'owl:Class, owl:ObjectProperty, owl:DatatypeProperty, '
+                               'owl:AnnotationProperty and owl:Thing entities will be '
+                               'annotated. If "all" is provided, every entity that has '
+                               'any properties other than rdf:type will be annotated.')
+    export_parser.add_argument('--retain-definedBy', action="store_true",
+                               help='When merging ontologies, retain existing values '
+                               'of rdfs:isDefinedBy')
+    export_parser.add_argument('--versioned-definedBy', action="store_true",
+                               help='Use versionIRI for rdfs:isDefinedBy, when available')
+    export_parser.add_argument('ontology', nargs="*", default=[],
+                               help="Ontology file or directory containing OWL files")
+
+
+def define_update_parser(subparsers):
+    """Command line options for the 'update' subcommand."""
     update_parser = subparsers.add_parser('update',
                                           help='Update versions and dependencies')
 
@@ -111,150 +290,3 @@ def configure_arg_parser():
                                help='Update the import of DEPENDENCY to VERSION')
     update_parser.add_argument('ontology', nargs="*", default=[],
                                help="Ontology file or directory containing OWL files")
-
-    export_parser = subparsers.add_parser('export', help='Export ontology')
-
-    format_parser = export_parser.add_mutually_exclusive_group()
-    format_parser.add_argument('-f', '--format', action='store',
-                               default='turtle',
-                               choices=['xml', 'turtle', 'nt'],
-                               help='Output format')
-    format_parser.add_argument('-c', '--context', action=UriValidator,
-                               help='Export as N-Quads in CONTEXT.')
-
-    export_parser.add_argument('--debug', action="store_true",
-                               help="Emit verbose debug output")
-    export_parser.add_argument('-o', '--output',
-                               type=argparse.FileType('w', encoding='utf-8'),
-                               default=sys.stdout,
-                               help='Path to output file.')
-    export_parser.add_argument('-s', '--strip-versions', action="store_true",
-                               help='Remove versions from imports.')
-    export_parser.add_argument('-m', '--merge', action=OntologyUriValidator, nargs=2,
-                               metavar=('IRI', 'VERSION'),
-                               help='Merge all inputs into a single ontology'
-                               ' with the given IRI and version')
-    export_parser.add_argument('-b', '--defined-by', action="store",
-                               nargs="?", const='strict',
-                               choices=['all', 'strict'],
-                               help='Add rdfs:isDefinedBy to every resource defined. '
-                               'If the (default) "strict" argument is provided, only '
-                               'owl:Class, owl:ObjectProperty, owl:DatatypeProperty, '
-                               'owl:AnnotationProperty and owl:Thing entities will be '
-                               'annotated. If "all" is provided, every entity that has '
-                               'any properties other than rdf:type will be annotated.')
-    export_parser.add_argument('--retain-definedBy', action="store_true",
-                               help='When merging ontologies, retain existing values '
-                               'of rdfs:isDefinedBy')
-    export_parser.add_argument('--versioned-definedBy', action="store_true",
-                               help='Use versionIRI for rdfs:isDefinedBy, when available')
-    export_parser.add_argument('ontology', nargs="*", default=[],
-                               help="Ontology file or directory containing OWL files")
-
-    bundle_parser = subparsers.add_parser('bundle', help='Bundle ontology for release')
-    bundle_parser.add_argument('--debug', action="store_true",
-                               help="Emit verbose debug output")
-    bundle_parser.add_argument('-v', '--variable', action="append",
-                               dest='variables',
-                               metavar=('VARIABLE', 'VALUE'),
-                               nargs=2, default=[],
-                               help='Set value of VARIABLE to VALUE')
-    bundle_parser.add_argument('bundle', default='bundle.json',
-                               help="JSON or YAML bundle definition")
-
-    graphic_parser = subparsers.add_parser('graphic',
-                                           help='Create PNG graphic and dot'
-                                           ' file from OWL files or SPARQL Endpoint')
-    data_source_group = graphic_parser.add_argument_group(title="Remote data source")
-    data_source = data_source_group.add_mutually_exclusive_group()
-    data_source.add_argument("-e", "--endpoint", action="store",
-                                help="URI of SPARQL endpoint to use to gather data")
-    data_source.add_argument("--cache", type=argparse.FileType("r"),
-                                help="Use cached data from previous queries")
-    which_graphic = graphic_parser.add_mutually_exclusive_group()
-    which_graphic.add_argument("--schema", dest="action", action="store_const",
-                               const="ontology", default="ontology",
-                               help="Generate ontology import graph (default)")
-    which_graphic.add_argument("--data", dest="action", action="store_const",
-                               const="instances",
-                               help="Analyze instances for types and links")
-    graphic_parser.add_argument("--single-ontology-graphs", action="store_true",
-                                help="If specified in combination with --endpoint"
-                                     " when generating a schema graph, assume that every"
-                                     " ontology is in its own named graph in the triple store."
-                                     " Otherwise rdfs:isDefinedBy will be used to locate"
-                                     " entities defined by each ontology.")
-    graphic_parser.add_argument('--debug', action="store_true",
-                                help="Emit verbose debug output")
-    graphic_parser.add_argument('--save-cache', type=argparse.FileType("w", encoding="utf-8"),
-                                help="Persist query results, which can be used with '--cache'")
-    graphic_parser.add_argument('-o', '--output', action="store",
-                                default=os.getcwd(),
-                                help="Output directory for generated graphics")
-    graphic_parser.add_argument('--show-shacl', action="store_true",
-                                help="Attempts to discover which classes and properties have corresponding"
-                                     " SHACL shapes and colors them green on the graph. This detection relies"
-                                     " on the presence of sh:targetClass targeting, and can be confused by"
-                                     " complex logical shapes or Advanced SHACL features such as SPARQL queries.")
-    graphic_parser.add_argument("--link-concentrator-threshold", type=int, default=3,
-                                help="When the number links originating from the same class that share a "
-                                     "single predicate exceed this threshold (default 10), use more compact "
-                                     "display. Setting the value to 0 disables this behavior.")
-    sampling_limits = graphic_parser.add_argument_group(title='Sampling Limits')
-    sampling_limits.add_argument("--instance-limit", type=int, default=500000,
-                                 help="Specify a limit on how many triples to consider that use any one"
-                                      " predicate to find (default 500000). This option may result in an"
-                                      " incomplete version of the diagram, missing certain links.")
-    sampling_limits.add_argument("--predicate-threshold", type=int, default=10,
-                                 help="Ignore predicates which occur fewer than PREDICATE_THRESHOLD times"
-                                      " (default 10)")
-    graph_filters = graphic_parser.add_argument_group(title="Filters (only one can be used)")
-    scope_control = graph_filters.add_mutually_exclusive_group()
-    scope_control.add_argument("--include", nargs="*", default=[],
-                               action=UriValidator,
-                               help="If specified for --schema, only ontologies matching the specified"
-                                    " URIs will be shown in full detail. If specified with --data, only"
-                                    " triples in the named graphs mentioned will be considered (this also"
-                                    " excludes any triples in the default graph).")
-    scope_control.add_argument("--include-pattern", nargs="*", default=[],
-                               metavar="INCLUDE_REGEX",
-                               help="If specified for --schema, only ontologies matching the specified"
-                                    " URI pattern will be shown in full detail. If specified with --data,"
-                                    " only triples in the named graphs matching the pattern"
-                                    " will be considered (this also excludes any triples in the default"
-                                    " graph). For large graphs this option is significantly slower than"
-                                    " using --include.")
-    scope_control.add_argument("--exclude", nargs="*", default=[],
-                               action=UriValidator,
-                               help="If specified for --schema, ontologies matching the specified"
-                                    " URIs will be omitted from the graph. If specified with --data, "
-                                    " triples in the named graphs mentioned will be excluded (this also"
-                                    " excludes any triples in the default graph).")
-    scope_control.add_argument("--exclude-pattern", nargs="*", default=[],
-                               metavar="EXCLUDE_REGEX",
-                               help="If specified for --schema, ontologies matching the specified"
-                                    " URI pattern will be omitted from the graph. If specified with --data,"
-                                    " triples in the named graphs matching the pattern"
-                                    " will be ignored (this also excludes any triples in the default"
-                                    " graph). For large graphs this option is significantly slower than"
-                                    " using --exclude.")
-    graphic_parser.add_argument('-v', '--version', help="Version to place in graphic",
-                                action="store")
-    graphic_parser.add_argument('-w', '--wee', nargs="*", default=None,
-                                help="For ontologies matching the patterns specified, only render "
-                                     "the name and import information. If no patterns are specified, applies "
-                                     "to all ontologies.")
-    graphic_parser.add_argument('--label-language', action="store", default="en",
-                                help="In case entities have labels in multiple languages, select either "
-                                     "the specified language (default: en) or a non-lanugage label.")
-    graphic_parser.add_argument('--hide', nargs="*", default=[],
-                                help="When visualizing data, hide classes and properties matching the regex"
-                                     "patterns specified with this option.")
-    graphic_parser.add_argument("--no-image", action="store_true",
-                                help="Do not generate PNG image, only .dot output.")
-    graphic_parser.add_argument("-t", "--title", action="store",
-                                help="Title to use for graph. If not supplied, the repo URI will be used if"
-                                " graphing an endpoint, or 'Gist' if graphing local files.")
-    graphic_parser.add_argument('ontology', nargs="*", default=[],
-                                help="Ontology file, directory or name pattern")
-    return parser
