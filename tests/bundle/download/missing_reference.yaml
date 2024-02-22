@@ -1,0 +1,13 @@
+bundle: test
+variables:
+  input: "https://w3id.org/semanticarts/ontology/"
+  output: "tests/bundle/download"
+actions:
+  - action: 'copy'
+    source: '{input}'
+    includes:
+      - 'non-existent.ttl'
+    target: "{output}/"
+  - action: 'copy'
+    source: '{input}/non-existent.ttl'
+    target: "{output}/"

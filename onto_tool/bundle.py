@@ -12,7 +12,8 @@ import subprocess
 import sys
 from glob import glob
 from os.path import basename, isdir, isfile, join, splitext
-from typing import List, Tuple
+from typing import Any, Iterable, List, Tuple
+from urllib.error import ContentTooShortError, URLError
 
 import pyshacl
 import yaml
@@ -28,7 +29,7 @@ from .mdutils import md2html
 from .ontograph import OntoGraf
 from .sparql_utils import create_endpoint, select_query_csv
 from .utils import parse_rdf, find_single_ontology, perform_export, \
-                   add_defined_by
+                   add_defined_by, is_remote, download_if_needed
 
 # f-strings are fine in log messages
 # pylint: disable=W1203
@@ -69,13 +70,90 @@ def register(name):
 
 def replace_patterns_in_file(file, from_pattern, to_string):
     """Replace regex pattern in file contents."""
-    with open(file, 'r') as f:
+    with open(file, 'r', encoding='utf-8') as f:
         replaced = re.compile(from_pattern).sub(to_string, f.read())
-    with open(file, 'w') as f:
+    with open(file, 'w', encoding='utf-8') as f:
         f.write(replaced)
 
 
-def __bundle_file_list(action, variables, ignore_target=False):
+def _apply_renaming(
+        action: dict[str, Any],
+        variables: dict[str, str],
+        input_file: str) -> str:
+    """Determine the base name of the output, applying renaming if specified."""
+    if 'rename' in action:
+        from_pattern = re.compile(
+            action['rename']['from'].format(**variables))
+        to_pattern = action['rename']['to'].format(**variables)
+        return from_pattern.sub(
+            to_pattern,
+            os.path.basename(input_file))
+    return os.path.basename(input_file)
+
+
+def _has_wildcard(pattern: str) -> bool:
+    return any(wildcard in pattern for wildcard in '[]*?')
+
+
+def _local_file_list(
+        src_dir: str,
+        tgt_dir: str,
+        action: dict[str, str],
+        variables: dict[str, str],
+        ignore_target: bool = False) -> Iterable[tuple[str, str]]:
+    include_pattern = action['includes'] if 'includes' in action else '*'
+    excluded_files = set()
+    if 'excludes' in action:
+        excluded_files = set(itertools.chain.from_iterable(
+            glob(os.path.join(src_dir, pattern)) for pattern in action['excludes']))
+    for pattern in include_pattern:
+        matches = list(glob(os.path.join(src_dir, pattern)))
+        if not matches and not _has_wildcard(pattern):
+            logging.warning('%s not found in %s', pattern, src_dir)
+        for input_file in (m for m in matches if m not in excluded_files):
+            yield (
+                input_file,
+                None if ignore_target else os.path.join(
+                    tgt_dir,
+                    _apply_renaming(action, variables, input_file))
+            )
+
+
+def _remote_file_list(
+        src_dir: str,
+        tgt_dir: str,
+        action: dict[str, str],
+        variables: dict[str, str],
+        ignore_target: bool = False) -> Iterable[tuple[str, str]]:
+    if 'includes' not in action or 'exludes' in action or \
+       any(_has_wildcard(inc) for inc in action['includes']):
+        raise BundleFileException(
+            'Remote source must have an include list with no wildcards and no exclusions',
+            action)
+    for sub_path in action['includes']:
+        try:
+            full_uri = src_dir + '/' + sub_path
+            local_path = download_if_needed(full_uri)
+            if local_path is None:
+                logging.warning('Unable to download %s from %s', sub_path, src_dir)
+            else:
+                yield (
+                    local_path,
+                    None if ignore_target else os.path.join(
+                        tgt_dir,
+                        _apply_renaming(action, variables, full_uri))
+                )
+        except (URLError, ContentTooShortError) as download_error:
+            raise BundleFileException(
+                'Unable to download remote resource ',
+                full_uri
+            ) from download_error
+
+
+def __bundle_file_list(
+        action: dict[str, str],
+        variables: dict[str, str],
+        ignore_target: bool = False) -> Iterable[tuple[str, str]]:
     """
     Expand a source/target/includes spec into a list of inputFile/outputFile pairs.
 
@@ -97,9 +175,7 @@ def __bundle_file_list(action, variables, ignore_target=False):
 
     Yields
     ------
-    dict
-        Contains 'inputFile' and 'outputFile' unless ignore_target
-        is specified.
+    (in_file, out_file) tuples (out_file is None if ignore_target is False)
 
     """
     if 'includes' in action or 'excludes' in action:
@@ -110,47 +186,30 @@ def __bundle_file_list(action, variables, ignore_target=False):
             if not isdir(tgt_dir):
                 os.makedirs(tgt_dir)
         else:
-            # There are times when
+            # There are times when we are only reading, not transforming
             tgt_dir = None
-        include_pattern = action['includes'] if 'includes' in action else '*'
-        excluded_files = set()
-        if 'excludes' in action:
-            excluded_files = set(itertools.chain.from_iterable(
-                glob(os.path.join(src_dir, pattern)) for pattern in action['excludes']))
-        for pattern in include_pattern:
-            matches = list(glob(os.path.join(src_dir, pattern)))
-            if not matches and not any(wildcard in pattern for wildcard in '[]*?'):
-                logging.warning('%s not found in %s', pattern, src_dir)
-            for input_file in (m for m in matches if m not in excluded_files):
-                if ignore_target:
-                    output_file = None
-                else:
-                    if 'rename' in action:
-                        from_pattern = re.compile(
-                            action['rename']['from'].format(**variables))
-                        to_pattern = action['rename']['to'].format(**variables)
-                        output_file = from_pattern.sub(
-                            to_pattern,
-                            os.path.basename(input_file))
-                    else:
-                        output_file = os.path.basename(input_file)
-                yield {
-                    'inputFile': input_file,
-                    'outputFile': None if output_file is None
-                    else os.path.join(tgt_dir, output_file)
-                }
+
+        if is_remote(src_dir):
+            yield from _remote_file_list(src_dir, tgt_dir, action, variables, ignore_target)
+        else:
+            yield from _local_file_list(src_dir, tgt_dir, action, variables, ignore_target)
     else:
-        yield {
-            'inputFile': action['source'].format(**variables),
-            'outputFile': None if ignore_target else action['target'].format(**variables)
-        }
+        requested_path = action['source'].format(**variables)
+        src_path = download_if_needed(requested_path)
+        if src_path is None:
+            logging.warning('Unable to download %s', requested_path)
+        else:
+            yield (
+                src_path,
+                None if ignore_target else action['target'].format(**variables)
+            )
 
 
 def __bundle_transform_shell__(action, arguments, variables):
-    for in_out in __bundle_file_list(action, variables):
+    for in_file, out_file in __bundle_file_list(action, variables):
         invocation_vars = VarDict()
         invocation_vars.update(variables)
-        invocation_vars.update(in_out)
+        invocation_vars.update({'inputFile': in_file, 'outputFile': out_file})
         interpreted_args = [arg.format(**invocation_vars) for arg in arguments]
         logging.debug('Running %s', interpreted_args)
         status = subprocess.run(interpreted_args, capture_output=True)
@@ -163,7 +222,7 @@ def __bundle_transform_shell__(action, arguments, variables):
                           interpreted_args, status.returncode, status.stderr)
             sys.exit(1)
         if 'replace' in action:
-            replace_patterns_in_file(in_out['outputFile'],
+            replace_patterns_in_file(out_file,
                                      action['replace']['from'].format(
                                          **invocation_vars),
                                      action['replace']['to'].format(**invocation_vars))
@@ -179,9 +238,9 @@ def __bundle_transform_sparql__(action, tool, variables):
 
     parsed_query = __parse_update_query__(query_text)
 
-    for in_out in __bundle_file_list(action, variables):
+    for in_file, out_file in __bundle_file_list(action, variables):
         g = Graph()
-        onto_file = in_out['inputFile']
+        onto_file = in_file
         rdf_format = guess_format(onto_file)
         parse_rdf(g, onto_file, rdf_format=rdf_format)
 
@@ -192,11 +251,11 @@ def __bundle_transform_sparql__(action, tool, variables):
         if 'format' in tool:
             rdf_format = 'pretty-xml' if action['format'] == 'xml' else action['format']
 
-        g.serialize(destination=in_out['outputFile'],
+        g.serialize(destination=out_file,
                     format=rdf_format, encoding='utf-8')
 
         if 'replace' in action:
-            replace_patterns_in_file(in_out['outputFile'],
+            replace_patterns_in_file(out_file,
                                      action['replace']['from'].format(
                                          **variables),
                                      action['replace']['to'].format(**variables))
@@ -230,9 +289,9 @@ def __bundle_transform__(action, tools, variables):
 @register(name="definedBy")
 def __bundle_defined_by__(action, variables):
     logging.debug('Add definedBy %s', action)
-    for in_out in __bundle_file_list(action, variables):
+    for in_file, out_file in __bundle_file_list(action, variables):
         g = Graph()
-        onto_file = in_out['inputFile']
+        onto_file = in_file
         rdf_format = guess_format(onto_file)
         parse_rdf(g, onto_file, rdf_format)
 
@@ -241,17 +300,17 @@ def __bundle_defined_by__(action, variables):
         if not ontology:
             logging.warning(f'Ignoring {onto_file}, no ontology found')
             # copy as unchanged
-            shutil.copy(in_out['inputFile'], in_out['outputFile'])
+            shutil.copy(in_file, out_file)
         else:
             add_defined_by(g, ontology,
                            replace=not __boolean_option__(
                                action, 'retainDefinedBy', variables),
                            versioned=__boolean_option__(action, 'versionedDefinedBy', variables))
 
-            g.serialize(destination=in_out['outputFile'],
+            g.serialize(destination=out_file,
                         format=rdf_format, encoding='utf-8')
         if 'replace' in action:
-            replace_patterns_in_file(in_out['outputFile'],
+            replace_patterns_in_file(out_file,
                                      action['replace']['from'].format(
                                          **variables),
                                      action['replace']['to'].format(**variables))
@@ -260,31 +319,31 @@ def __bundle_defined_by__(action, variables):
 @register(name="copy")
 def __bundle_copy__(action, variables):
     logging.debug('Copy %s', action)
-    for in_out in __bundle_file_list(action, variables):
-        if isfile(in_out['inputFile']):
-            shutil.copy(in_out['inputFile'], in_out['outputFile'])
+    for in_file, out_file in __bundle_file_list(action, variables):
+        if isfile(in_file):
+            shutil.copy(in_file, out_file)
             if 'replace' in action:
-                replace_patterns_in_file(in_out['outputFile'],
+                replace_patterns_in_file(out_file,
                                          action['replace']['from'].format(
                                              **variables),
                                          action['replace']['to'].format(**variables))
-        elif isdir(in_out['inputFile']):
-            shutil.copytree(in_out['inputFile'], in_out['outputFile'])
+        elif isdir(in_file):
+            shutil.copytree(in_file, out_file)
 
 
 @register(name="move")
 def __bundle_move__(action, variables):
     logging.debug('Move %s', action)
-    for in_out in __bundle_file_list(action, variables):
-        if isfile(in_out['inputFile']):
-            shutil.move(in_out['inputFile'], in_out['outputFile'])
+    for in_file, out_file in __bundle_file_list(action, variables):
+        if isfile(in_file):
+            shutil.move(in_file, out_file)
             if 'replace' in action:
-                replace_patterns_in_file(in_out['outputFile'],
+                replace_patterns_in_file(out_file,
                                          action['replace']['from'].format(
                                              **variables),
                                          action['replace']['to'].format(**variables))
-        elif isdir(in_out['inputFile']):
-            shutil.move(in_out['inputFile'], in_out['outputFile'])
+        elif isdir(in_file):
+            shutil.move(in_file, out_file)
 
 
 @register(name="markdown")
@@ -294,10 +353,10 @@ def __bundle_markdown__(action, variables):
     # The default rename is *.md -> *.html
     if 'rename' not in action:
         action['rename'] = {'from': "(.*)\\.md", 'to': "\\g<1>.html"}
-    for in_out in __bundle_file_list(action, variables):
-        with open(in_out['inputFile']) as md:
+    for in_file, out_file in __bundle_file_list(action, variables):
+        with open(in_file, encoding="utf-8") as md:
             converted_md = md2html(md.read())
-        with open(in_out['outputFile'], 'w') as fd:
+        with open(out_file, 'w', encoding="utf-8") as fd:
             converted_md.seek(0)
             shutil.copyfileobj(converted_md, fd, -1)
 
@@ -311,23 +370,23 @@ def __bundle_graph__(action, variables):
     if not isdir(documentation):
         os.mkdir(documentation)
     compact = action['compact'] if 'compact' in action else False
-    og = OntoGraf([f['inputFile'] for f in __bundle_file_list(action, variables)],
+    og = OntoGraf([in_file for in_file, _ in __bundle_file_list(action, variables)],
                   outpath=documentation, wee=[] if compact else None, title=title, version=version)
     og.gather_schema_info_from_files()
     og.create_schema_graf()
 
 
 def __bundle_local_sparql_each__(action, variables, queries):
-    for in_out in __bundle_file_list(action, variables):
+    for in_file, out_file in __bundle_file_list(action, variables):
         g = Graph()
-        onto_file = in_out['inputFile']
+        onto_file = in_file
         parse_rdf(g, onto_file)
         logging.debug("Input graph size for %s is %d",
-                      in_out['inputFile'], len(g))
+                      in_file, len(g))
 
         updated = False
         for query_file, query_text in queries:
-            logging.debug("Applying %s to %s", query_file, in_out['inputFile'])
+            logging.debug("Applying %s to %s", query_file, in_file)
             parsed_update = None
             parsed_query = None
             try:
@@ -347,7 +406,7 @@ def __bundle_local_sparql_each__(action, variables, queries):
 
                 if results.vars is not None:
                     # SELECT Query
-                    select_output = __determine_output_file_name__(in_out['outputFile'],
+                    select_output = __determine_output_file_name__(out_file,
                                                                    queries, query_file,
                                                                    suffix='csv')
                     with open(select_output, 'w', encoding='utf-8') as csv_file:
@@ -357,7 +416,7 @@ def __bundle_local_sparql_each__(action, variables, queries):
                     # CONSTRUCT Query
                     __transfer_query_prefixes__(results.graph, parsed_query)
                     rdf_format, suffix = __determine_format_and_suffix(action)
-                    construct_output = __determine_output_file_name__(in_out['outputFile'],
+                    construct_output = __determine_output_file_name__(out_file,
                                                                       queries, query_file,
                                                                       suffix=suffix)
                     results.graph.serialize(
@@ -371,8 +430,8 @@ def __bundle_local_sparql_each__(action, variables, queries):
                 rdf_format = 'pretty-xml' if action['format'] == 'xml' else action['format']
             else:
                 rdf_format = 'turtle'
-            logging.debug("Saving updated RDF to %s", in_out['outputFile'])
-            g.serialize(destination=in_out['outputFile'],
+            logging.debug("Saving updated RDF to %s", out_file)
+            g.serialize(destination=out_file,
                         format=rdf_format, encoding='utf-8')
 
 
@@ -510,8 +569,8 @@ def __serialize_select_results__(output, results):
 def __build_graph_from_inputs__(action, variables):
     """Read RDF files specified by source/[inputs] into a Graph"""
     g = Graph()
-    for in_out in __bundle_file_list(action, variables, ignore_target=True):
-        onto_file = in_out['inputFile']
+    for in_file, _ in __bundle_file_list(action, variables, ignore_target=True):
+        onto_file = in_file
         parse_rdf(g, onto_file)
     logging.debug("Input graph size is %d", len(g))
     return g
@@ -835,7 +894,7 @@ def __build_query_list__(action: dict, variables: dict) -> List[Tuple]:
             queries = [('inline', query)]
     elif 'queries' in action:
         query_files = [
-            entry['inputFile'] for entry in
+            in_file for in_file, _ in
             __bundle_file_list(action['queries'], variables, ignore_target=True)]
         queries = [(query, read_query_file(query)) for query in query_files]
     else:
@@ -873,8 +932,8 @@ def __bundle_export__(action, variables):
     if 'merge' in action:
         merge = (action['merge']['iri'], action['merge']['version'])
 
-    paths = list(f['inputFile']
-                 for f in __bundle_file_list(action, variables, ignore_target=True))
+    paths = list(in_file for in_file, _
+                 in __bundle_file_list(action, variables, ignore_target=True))
 
     defined_by = None
     if 'definedBy' in action:
