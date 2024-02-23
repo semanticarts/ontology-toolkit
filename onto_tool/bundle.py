@@ -18,6 +18,7 @@ from urllib.error import ContentTooShortError, URLError
 import pyshacl
 import yaml
 from jsonschema import validate
+from owlrl import DeductiveClosure, OWLRL_Semantics, RDFS_Semantics, RDFS_OWLRL_Semantics
 from pyparsing import ParseException
 from rdflib import Graph, Literal
 from rdflib.namespace import OWL, RDFS, SKOS, XSD, Namespace
@@ -376,6 +377,29 @@ def __bundle_graph__(action, variables):
     og.create_schema_graf()
 
 
+def _parse_query_text(query_text: str) -> tuple[str, str]:
+    parsed_update = None
+    parsed_query = None
+    try:
+        parsed_update = __parse_update_query__(query_text)
+    except ParseException:
+        # Not a update
+        parsed_query = prepareQuery(query_text)
+    return parsed_update, parsed_query
+
+
+def _apply_reasoning(g: Graph, inference: str):
+    if inference == 'none':
+        return
+    inference_mapping = {
+        'owlrl': OWLRL_Semantics,
+        'rdfs': RDFS_Semantics,
+        'both': RDFS_OWLRL_Semantics
+    }
+    DeductiveClosure(inference_mapping[inference]).expand(g)
+    logging.debug("Expanded graph size is %d", len(g))
+
+
 def __bundle_local_sparql_each__(action, variables, queries):
     for in_file, out_file in __bundle_file_list(action, variables):
         g = Graph()
@@ -383,23 +407,17 @@ def __bundle_local_sparql_each__(action, variables, queries):
         parse_rdf(g, onto_file)
         logging.debug("Input graph size for %s is %d",
                       in_file, len(g))
-
         updated = False
         for query_file, query_text in queries:
             logging.debug("Applying %s to %s", query_file, in_file)
-            parsed_update = None
-            parsed_query = None
-            try:
-                parsed_update = __parse_update_query__(query_text)
-            except ParseException:
-                # Not a update
-                parsed_query = prepareQuery(query_text)
-
+            parsed_update, parsed_query = _parse_query_text(query_text)
             if parsed_update:
                 g.update(parsed_update)
                 __transfer_query_prefixes__(g, parsed_update)
                 updated = True
             else:
+                if 'inference' in action:
+                    _apply_reasoning(g, action['inference'].format(**variables))
                 results = g.query(
                     parsed_query,
                     initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
@@ -439,19 +457,15 @@ def __bundle_local_sparql__(action, variables, output, queries):
     g = __build_graph_from_inputs__(action, variables)
     updated = False
     for query_file, query_text in queries:
-        parsed_update = None
-        parsed_query = None
-        try:
-            parsed_update = __parse_update_query__(query_text)
-        except ParseException:
-            # Not a update
-            parsed_query = prepareQuery(query_text)
+        parsed_update, parsed_query = _parse_query_text(query_text)
 
         if parsed_update:
             g.update(parsed_update)
             __transfer_query_prefixes__(g, parsed_update)
             updated = True
         else:
+            if 'inference' in action:
+                _apply_reasoning(g, action['inference'].format(**variables))
             results = g.query(
                 parsed_query,
                 initNs={'xsd': XSD, 'owl': OWL, 'rdfs': RDFS, 'skos': SKOS})
@@ -512,13 +526,7 @@ def __determine_output_file_name__(output, queries, query_file, suffix):
 
 def __bundle_endpoint_sparql__(action, variables, output, queries):
     for query_file, query_text in queries:
-        parsed_update = None
-        parsed_query = None
-        try:
-            parsed_update = __parse_update_query__(query_text)
-        except ParseException:
-            # Not a update
-            parsed_query = prepareQuery(query_text)
+        parsed_update, parsed_query = _parse_query_text(query_text)
 
         # parsed_query.algebra.name will be SelectQuery, ConstructQuery or AskQuery
         if parsed_update:

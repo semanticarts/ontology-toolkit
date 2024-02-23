@@ -1,0 +1,60 @@
+bundle: test
+variables:
+  input: "tests/bundle/reasoning"
+  output: "tests/bundle/reasoning"
+actions:
+  - action: 'sparql'
+    source: '{input}/reasoning.ttl'
+    inference: 'none'
+    target: '{output}/none.ttl'
+    query: >
+      prefix : <https://data.clientX.com/> 
+      prefix owl: <http://www.w3.org/2002/07/owl#>
+      prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      construct {{
+        ?s a ?type .
+      }}
+      WHERE {{
+        ?s a ?type .
+        FILTER (!isBlank(?s) && !CONTAINS(STR(?type), 'owl'))
+      }}
+  - action: 'sparql'
+    source: '{input}/reasoning.ttl'
+    inference: 'rdfs'
+    target: '{output}/rdfs.csv'
+    query: >
+      prefix : <https://data.clientX.com/> 
+      prefix owl: <http://www.w3.org/2002/07/owl#>
+      prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?s ?type
+      WHERE {{
+        ?s a ?type .
+        FILTER (CONTAINS(STR(?s), 'clientX') && CONTAINS(STR(?type), 'clientX'))
+      }} ORDER BY ?s ?type
+  - action: 'sparql'
+    source: '{input}/reasoning.ttl'
+    inference: 'owlrl'
+    target: '{output}/owlrl.csv'
+    query: >
+      prefix : <https://data.clientX.com/> 
+      prefix owl: <http://www.w3.org/2002/07/owl#>
+      prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?s ?type
+      WHERE {{
+        ?s a ?type .
+        FILTER (CONTAINS(STR(?s), 'clientX') && CONTAINS(STR(?type), 'clientX'))
+      }} ORDER BY ?s ?type
+  - action: 'sparql'
+    source: '{input}/reasoning.ttl'
+    inference: 'both'
+    target: '{output}/both.csv'
+    query: >
+      prefix : <https://data.clientX.com/> 
+      prefix owl: <http://www.w3.org/2002/07/owl#>
+      prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?s ?type
+      WHERE {{
+        ?s a ?type .
+        FILTER (CONTAINS(STR(?s), 'clientX') && CONTAINS(STR(?type), 'clientX'))
+      }} ORDER BY ?s ?type
+

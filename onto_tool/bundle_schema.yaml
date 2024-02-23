@@ -81,6 +81,13 @@ definitions:
     required:
       - query_uri
     additionalProperties: false
+  inference:
+    type: string
+    enum:
+      - "rdfs"
+      - "owlrl"
+      - "both"
+      - "none"
 type: object
 required:
   - bundle
@@ -301,12 +308,7 @@ properties:
                     target:
                       $ref: '#/definitions/non_empty_string'
                     inference:
-                      type: string
-                      enum:
-                        - "rdfs"
-                        - "owlrl"
-                        - "both"
-                        - "none"
+                      $ref: '#/definitions/inference'
                     failOn:
                       type: string
                       enum:
@@ -343,6 +345,8 @@ properties:
                       $ref: '#/definitions/pattern_list'
                     excludes:
                       $ref: '#/definitions/pattern_list'
+                    inference:
+                      $ref: '#/definitions/inference'
                     eachFile:
                       type: boolean
                     format:
