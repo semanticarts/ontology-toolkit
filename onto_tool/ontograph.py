@@ -727,6 +727,7 @@ class OntoGraf:
                               FILTER(!ISBLANK(?s))
                               ?s a ?src_c .
                               FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
+                              FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/ns/shacl#'))
                               ?o a ?tgt_c .
                             } group by ?s ?o LIMIT $limit
                         }
@@ -744,6 +745,7 @@ class OntoGraf:
                               FILTER(!ISBLANK(?s) && ISLITERAL(?o))
                               ?s a ?src_c .
                               FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
+                              FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/ns/shacl#'))
                               BIND(DATATYPE(?o) as ?dtype) .
                             } group by ?s LIMIT $limit
                         }
