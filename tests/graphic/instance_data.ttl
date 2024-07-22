@@ -2,6 +2,7 @@
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix : <http://example.com/> .
 
 :Instances a owl:Ontology; owl:imports :Domain; rdfs:label "Instance Data" .
@@ -10,3 +11,4 @@
 :_u1 a :School; rdfs:isDefinedBy :Instances .
 :_s1 a :Student; :isFriendOf :_p1; rdfs:isDefinedBy :Instances .
 :_p1 a :Person; :hasPhoneNumber "123-456-7890"; rdfs:isDefinedBy :Instances .
+:_h1 a sh:NodeShape ; sh:targetClass :School ; rdfs:isDefinedBy :Instances .

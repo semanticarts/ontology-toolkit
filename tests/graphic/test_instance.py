@@ -108,3 +108,20 @@ def test_concentration():
     ])
     (instance_graph,) = pydot.graph_from_dot_file('tests-output/graphic/concentration.dot')
     assert 4 == sum(1 for e in instance_graph.get_edges() if e.get_label() == 'playsWith')
+
+
+def test_shacl_instances():
+    onto_tool.main([
+        'graphic', '--predicate-threshold', '0', '--data',
+        '-t', 'Local Instance Data',
+        '--no-image',
+        '-o', 'tests-output/graphic/test_instance',
+        'tests/graphic/domain_ontology.ttl',
+        'tests/graphic/upper_ontology.ttl',
+        'tests/graphic/instance_data.ttl'
+    ])
+    (instance_graph,) = pydot.graph_from_dot_file('tests-output/graphic/test_instance.dot')
+    edges = list(sorted((e.get_source(), e.get_destination()) for e in instance_graph.get_edges()))
+    shacl_namespace = "http://www.w3.org/ns/shacl#"
+    shacl_edges = [edge for edge in edges if any(shacl_namespace in part for part in edge)]
+    assert 0 == len(shacl_edges)
