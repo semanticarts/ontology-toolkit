@@ -496,7 +496,8 @@ class OntoGraf:
              ?class (owl:equivalentClass|rdfs:subClassOf)/
                     (owl:unionOf|owl:intersectionOf)/
                     rdf:rest*/rdf:first ?parent .
-            ?parent a owl:Class
+            ?parent a owl:Class .
+            filter not exists { ?parent rdfs:subClassOf+ ?class }
           }
           filter (!isblank(?class) && !isblank(?parent))
           OPTIONAL {
