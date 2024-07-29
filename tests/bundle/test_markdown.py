@@ -27,4 +27,3 @@ def test_markdown_bulk():
 
     inc_and_exc = [basename(f) for f in glob('tests-output/bundle/bulk_md/inc_and_exc/*')]
     assert sorted(inc_and_exc) == ['b2.html', 'c3.html']
-
