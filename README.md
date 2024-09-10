@@ -188,6 +188,8 @@ optional arguments:
                         Title to use for graph. If not supplied, the repo URI
                         will be used if graphing an endpoint, or 'Gist' if
                         graphing local files.
+  --show-bnode-subjects Use triples with blank nodes in the subject to generate
+                        the graphic.
 
 Sampling Limits:
   --instance-limit INSTANCE_LIMIT
