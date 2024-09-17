@@ -199,8 +199,7 @@ def define_graphic_parser(subparsers):
     graphic_parser.add_argument('ontology', nargs="*", default=[],
                                 help="Ontology file, directory or name pattern")
     graphic_parser.add_argument("--show-bnode-subjects", action="store_true",
-                                help="Use triples with blank nodes in the subject to generate "
-                                "the graphic.")
+                                help="Include blank node subjects when generating a graph.")
 
 
 def define_export_parser(subparsers):
