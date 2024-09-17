@@ -666,8 +666,6 @@ class OntoGraf:
 
     def __create_predicate_query(self, predicate, predicate_type, limit):
         bnode_filter = "FILTER(!ISBLANK(?s))" if not self.show_bnode_subjects else ""
-        bnode_and_literal_filter = "FILTER(!ISBLANK(?s) && ISLITERAL(?o))" if not self.show_bnode_subjects \
-            else "FILTER(ISLITERAL(?o))"
         if predicate_type == str(OWL.ObjectProperty):
             type_query = """
                 prefix owl: <http://www.w3.org/2002/07/owl#>
@@ -705,7 +703,8 @@ class OntoGraf:
                   {
                     select (group_concat(?src_c;separator=' ') as ?src) (SAMPLE(COALESCE(?dtype, xsd:string)) as ?dt) where {
                       $pattern
-                      $bnode_and_literal_filter
+                      FILTER(ISLITERAL(?o))
+                      $bnode_filter
                       ?s a ?src_c .
                       FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
                       BIND(DATATYPE(?o) as ?dtype) .
@@ -752,7 +751,8 @@ class OntoGraf:
                             select (group_concat(?src_c;separator=' ') as ?src)
                                    (SAMPLE(COALESCE(?dtype, xsd:string)) as ?dt) where {
                               $pattern
-                              $bnode_and_literal_filter
+                              FILTER(ISLITERAL(?o))
+                              $bnode_filter
                               ?s a ?src_c .
                               FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
                               FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/ns/shacl#'))
@@ -767,7 +767,6 @@ class OntoGraf:
         query_text = Template(type_query).substitute(
             pattern=self.__filtered_graph_pattern(predicate),
             bnode_filter=bnode_filter,
-            bnode_and_literal_filter=bnode_and_literal_filter,
             limit=limit)
         return query_text
 
