@@ -170,7 +170,7 @@ def generate_graphic(action, onto_files, endpoint, **kwargs):
     save_cache: TextIOWrapper
         Save query results as JSON to use with --cache
     show_bnode_subjects: boolean
-        If true, triples with blank nodes in the subject will be used to generate the graphic
+        If true, triples with blank nodes in the subject will not be used to filtered out.
 
     Returns
     -------
