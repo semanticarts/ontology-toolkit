@@ -245,7 +245,7 @@ class OntoGraf:
               UNION
               {
                 ?entity rdfs:isDefinedBy ?ontology; a ?type .
-                ?bnode_filter
+                $bnode_filter
               }
             }
             """
