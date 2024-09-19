@@ -3,10 +3,10 @@ from pytest import raises
 import re
 
 
-def test_syntax_export(caplog):
+def test_syntax_export(caplog, tmp_path):
     with raises(SystemExit) as wrapped_exit:
         onto_tool.main([
-            'bundle', '-v', 'output', 'tests-output/bundle', 'tests/bundle/syntax_error.yaml'
+            'bundle', '-v', 'output', f'{tmp_path}', 'tests/bundle/syntax_error.yaml'
         ])
     assert wrapped_exit.type == SystemExit
     assert wrapped_exit.value.code == 1
