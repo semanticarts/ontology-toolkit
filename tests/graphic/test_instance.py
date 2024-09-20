@@ -22,6 +22,29 @@ def test_local_instance(tmp_path):
     ]
 
 
+def test_remote_instance(tmp_path, sparql_endpoint):
+    repo_uri = 'https://my.rdfdb.com/repo/sparql'
+    rdf_files = ['tests/graphic/domain_ontology.ttl',
+                 'tests/graphic/upper_ontology.ttl',
+                 'tests/graphic/instance_data.ttl']
+    sparql_endpoint(repo_uri, rdf_files)
+
+    onto_tool.main([
+        'graphic', '--predicate-threshold', '0', '--data',
+        '--endpoint', f'{repo_uri}',
+        '-t', 'Remote Instance Data',
+        '--no-image',
+        '-o', f'{tmp_path}/test_instance'
+    ])
+    (instance_graph,) = pydot.graph_from_dot_file(f'{tmp_path}/test_instance.dot')
+    edges = list(sorted((e.get_source(), e.get_destination()) for e in instance_graph.get_edges()))
+    assert edges == [
+        ('"http://example.com/Student"', '"http://example.com/Person"'),
+        ('"http://example.com/Teacher"', '"http://example.com/School"'),
+        ('"http://example.com/Teacher"', '"http://example.com/Student"')
+    ]
+
+
 def test_multi_language(tmp_path):
     onto_tool.main([
         'graphic', '--predicate-threshold', '0', '--data',

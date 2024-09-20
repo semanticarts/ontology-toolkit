@@ -4,13 +4,20 @@
 
 :SmallOnt a owl:Ontology .
 
-:Person a rdfs:Class .
-:State a rdfs:Class .
-:residesIn a owl:ObjectProperty .
-:name a owl:DatatypeProperty .
+:Person a rdfs:Class ;
+    rdfs:isDefinedBy :SmallOnt .
+:State a rdfs:Class ;
+    rdfs:isDefinedBy :SmallOnt .
+:residesIn a owl:ObjectProperty ;
+    rdfs:isDefinedBy :SmallOnt .
+:name a owl:DatatypeProperty ;
+    rdfs:isDefinedBy :SmallOnt .
 
-:Class1 a rdfs:Class .
-:Class2 a rdfs:Class .
+:Class1 a rdfs:Class ;
+    rdfs:isDefinedBy :SmallOnt .
+:Class2 a rdfs:Class ;
+    rdfs:isDefinedBy :SmallOnt .
 [] a rdfs:Class ;
+    rdfs:isDefinedBy :SmallOnt ;
     rdfs:subClassOf  :Class1, :Class2 ;
     rdfs:label "Unnamed Class" .

@@ -1,0 +1,18 @@
+@prefix : <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+:OntGraph {
+    :SmallOnt a owl:Ontology .
+
+    :Person a rdfs:Class .
+    :State a rdfs:Class .
+    :residesIn a owl:ObjectProperty .
+    :name a owl:DatatypeProperty .
+
+    :Class1 a rdfs:Class .
+    :Class2 a rdfs:Class .
+    [] a rdfs:Class ;
+        rdfs:subClassOf  :Class1, :Class2 ;
+        rdfs:label "Unnamed Class" .
+}

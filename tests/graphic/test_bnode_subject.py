@@ -56,3 +56,42 @@ def test_show_ont_bnode_subjects(tmp_path):
     (instance_graph,) = pydot.graph_from_dot_file(f'{tmp_path}/test_ont_bnode_subjects.dot')
     label = instance_graph.get_nodes()[1].get("label")
     assert re.sub(r"n[0-9a-fA-F]{34}", "BNODE_ID", label) == '"{issue-116-ontology.ttl\l\lSmallOnt||residesIn|name||Person\lState\lClass1\lClass2\lBNODE_ID}"'
+
+
+def test_remote_show_ont_bnode_subjects(tmp_path, sparql_endpoint):
+    repo_uri = 'https://my.rdfdb.com/repo/sparql'
+    rdf_files = ['tests/graphic/issue-116-ontology.ttl']
+    sparql_endpoint(repo_uri, rdf_files)
+
+    print(tmp_path)
+    onto_tool.main([
+        'graphic', '--predicate-threshold', '0', '--schema',
+        '--endpoint', f'{repo_uri}',
+        '--show-bnode-subjects',
+        '-t', 'Ontology Named Node Subjects',
+        '--no-image',
+        '-o', f'{tmp_path}/test_ont_bnode_subjects'
+    ])
+    (instance_graph,) = pydot.graph_from_dot_file(f'{tmp_path}/test_ont_bnode_subjects.dot')
+    label = instance_graph.get_nodes()[1].get("label")
+    assert re.sub(r"n[0-9a-fA-F]{34}", "BNODE_ID", label) == '"{http://example.org/SmallOnt\l\lSmallOnt||residesIn|name||Class1\lClass2\lPerson\lState\lBNODE_ID}"'
+
+
+def test_remote_show_ont_trig(tmp_path, sparql_endpoint):
+    repo_uri = 'https://my.rdfdb.com/repo/sparql'
+    rdf_files = ['tests/graphic/issue-116-ontology.trig']
+    sparql_endpoint(repo_uri, rdf_files)
+
+    print(tmp_path)
+    onto_tool.main([
+        'graphic', '--predicate-threshold', '0', '--schema',
+        '--single-ontology-graphs',
+        '--endpoint', f'{repo_uri}',
+        '--show-bnode-subjects',
+        '-t', 'Ontology Named Node Subjects',
+        '--no-image',
+        '-o', f'{tmp_path}/test_ont_bnode_subjects'
+    ])
+    (instance_graph,) = pydot.graph_from_dot_file(f'{tmp_path}/test_ont_bnode_subjects.dot')
+    label = instance_graph.get_nodes()[1].get("label")
+    assert re.sub(r"n[0-9a-fA-F]{34}", "BNODE_ID", label) == '"{http://example.org/SmallOnt\l\lSmallOnt||residesIn|name||Class1\lClass2\lPerson\lState\lBNODE_ID}"'
