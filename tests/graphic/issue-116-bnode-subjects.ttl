@@ -1,0 +1,14 @@
+@prefix : <http://example.org/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+[] a :Person ;
+    :name "James" ;
+    :residesIn :_Virginia ;
+    .
+[] a :Person ;
+    :name "Betty" ;
+    :residesIn :_Maryland ;
+    .
+
+:_Virginia a :State .
+:_Maryland a :State .

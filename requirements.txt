@@ -18,3 +18,4 @@ namedentities>=1.5.2
 zipp>=3.1.0
 pytest~=6.1.2
 SPARQLWrapper~=1.8.5
+sparql-endpoint-fixture>=0.5.0

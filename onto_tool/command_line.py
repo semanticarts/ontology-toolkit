@@ -198,6 +198,8 @@ def define_graphic_parser(subparsers):
         " graphing an endpoint, or 'Gist' if graphing local files.")
     graphic_parser.add_argument('ontology', nargs="*", default=[],
                                 help="Ontology file, directory or name pattern")
+    graphic_parser.add_argument("--show-bnode-subjects", action="store_true",
+                                help="Include blank node subjects when generating a graph.")
 
 
 def define_export_parser(subparsers):

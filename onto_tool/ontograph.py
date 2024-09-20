@@ -84,6 +84,7 @@ class OntoGraf:
 
         self.show_shacl = kwargs.get('show_shacl')
         self.shapes = defaultdict(list)
+        self.show_bnode_subjects = kwargs.get('show_bnode_subjects')
 
     def __configure_data_source(self, repo, kwargs, title, version):
         """Determine graph title and output location from data source."""
@@ -172,7 +173,7 @@ class OntoGraf:
             ontology = next(graph.subjects(RDF.type, OWL.Ontology))
             ontology_name = self.__strip_uri(ontology)
             classes = [self.__strip_uri(c) for c in graph.subjects(RDF.type, OWL.Class)
-                       if not isinstance(c, BNode)]
+                       if not isinstance(c, BNode) or self.show_bnode_subjects]
             obj_props = [self.__strip_uri(c)
                          for c in graph.subjects(RDF.type, OWL.ObjectProperty)]
             data_props = [self.__strip_uri(c)
@@ -182,8 +183,8 @@ class OntoGraf:
             all_seen = set(classes + obj_props + data_props + annotation_props)
             gist_things = [
                 self.__strip_uri(s) for (s, o) in graph.subject_objects(RDF.type)
-                if not isinstance(s, BNode) and not s == ontology and not self.__strip_uri(s)
-                in all_seen]
+                if (not isinstance(s, BNode) or self.show_bnode_subjects) and
+                not s == ontology and not self.__strip_uri(s) in all_seen]
             imports = [self.__strip_uri(c)
                        for c in graph.objects(ontology, OWL.imports)]
 
@@ -202,6 +203,7 @@ class OntoGraf:
     def gather_schema_info_from_repo(self):
         """Load schema data from SPARQL endpoint."""
         onto_data = defaultdict(lambda: defaultdict(list))
+        bnode_filter = "filter(!ISBLANK(?entity))" if not self.show_bnode_subjects else ""
         if self.single_graph:
             onto_query = """
             prefix owl: <http://www.w3.org/2002/07/owl#>
@@ -221,7 +223,7 @@ class OntoGraf:
                 {
                   ?entity a ?type .
                   FILTER(?type != owl:Ontology)
-                  filter(!ISBLANK(?entity))
+                  $bnode_filter
                 }
               }
             }
@@ -243,7 +245,7 @@ class OntoGraf:
               UNION
               {
                 ?entity rdfs:isDefinedBy ?ontology; a ?type .
-                filter(!ISBLANK(?entity))
+                $bnode_filter
               }
             }
             """
@@ -254,7 +256,8 @@ class OntoGraf:
             str(OWL.AnnotationProperty): 'annotation_propertiesList',
             str(OWL.imports): 'imports'
         }
-        for entity in self.__remote_select_query(onto_query):
+        for entity in self.__remote_select_query(
+                Template(onto_query).substitute(bnode_filter=bnode_filter)):
             key = mapping.get(entity['type'], 'gist_thingsList')
             onto_data[entity['ontology']][key].append(
                 self.__strip_uri(entity['entity']))
@@ -481,6 +484,8 @@ class OntoGraf:
             json.dump(self.cached_data, self.save_cache)
 
     def __build_class_hierarchy(self):
+        bnode_filter = "filter (!isblank(?class) && !isblank(?parent))\n" \
+            if not self.show_bnode_subjects else ""
         inheritance_query = Template("""
         prefix owl: <http://www.w3.org/2002/07/owl#>
         prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -498,7 +503,7 @@ class OntoGraf:
                     rdf:rest*/rdf:first ?parent .
             ?parent a owl:Class
           }
-          filter (!isblank(?class) && !isblank(?parent))
+          $bnode_filter
           OPTIONAL {
               ?class rdfs:label|skos:prefLabel ?c_label
               FILTER(lang(?c_label) = '$language' || lang(?c_label) = '')
@@ -508,7 +513,7 @@ class OntoGraf:
               FILTER(lang(?p_label) = '$language' || lang(?p_label) = '')
           }
         }
-        """).substitute(language=self.label_lang)
+        """).substitute(bnode_filter=bnode_filter, language=self.label_lang)
         parents = self.__select_query(inheritance_query, 'parents')
 
         for inheritance_info in parents:
@@ -634,6 +639,7 @@ class OntoGraf:
             self.shapes[row['class']].append(row['property'])
 
     def __create_class_count_query(self, limit):
+        bnode_filter = "FILTER(!ISBLANK(?s))" if not self.show_bnode_subjects else ""
         class_query = """
             prefix owl: <http://www.w3.org/2002/07/owl#>
             prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -646,7 +652,7 @@ class OntoGraf:
               {
                 select (group_concat(?o;separator=' ') as ?src) where {
                   $pattern
-                  FILTER(!ISBLANK(?s))
+                  $bnode_filter
                   FILTER (!STRSTARTS(STR(?o), 'http://www.w3.org/2002/07/owl#'))
                 } group by ?s LIMIT $limit
               }
@@ -654,10 +660,12 @@ class OntoGraf:
             """
         query_text = Template(class_query).substitute(
             pattern=self.__filtered_graph_pattern(str(RDF.type)),
+            bnode_filter=bnode_filter,
             limit=limit)
         return query_text
 
     def __create_predicate_query(self, predicate, predicate_type, limit):
+        bnode_filter = "FILTER(!ISBLANK(?s))" if not self.show_bnode_subjects else ""
         if predicate_type == str(OWL.ObjectProperty):
             type_query = """
                 prefix owl: <http://www.w3.org/2002/07/owl#>
@@ -674,7 +682,7 @@ class OntoGraf:
                         (group_concat(?tgt_c;separator=' ') as ?tgt)
                     where {
                       $pattern
-                      FILTER(!ISBLANK(?s))
+                      $bnode_filter
                       ?s a ?src_c .
                       FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
                       ?o a ?tgt_c .
@@ -695,7 +703,8 @@ class OntoGraf:
                   {
                     select (group_concat(?src_c;separator=' ') as ?src) (SAMPLE(COALESCE(?dtype, xsd:string)) as ?dt) where {
                       $pattern
-                      FILTER(!ISBLANK(?s) && ISLITERAL(?o))
+                      FILTER(ISLITERAL(?o))
+                      $bnode_filter
                       ?s a ?src_c .
                       FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
                       BIND(DATATYPE(?o) as ?dtype) .
@@ -724,7 +733,7 @@ class OntoGraf:
                             select (group_concat(?src_c;separator=' ') as ?src)
                                    (group_concat(?tgt_c;separator=' ') as ?tgt) where {
                               $pattern
-                              FILTER(!ISBLANK(?s))
+                              $bnode_filter
                               ?s a ?src_c .
                               FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
                               FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/ns/shacl#'))
@@ -742,7 +751,8 @@ class OntoGraf:
                             select (group_concat(?src_c;separator=' ') as ?src)
                                    (SAMPLE(COALESCE(?dtype, xsd:string)) as ?dt) where {
                               $pattern
-                              FILTER(!ISBLANK(?s) && ISLITERAL(?o))
+                              FILTER(ISLITERAL(?o))
+                              $bnode_filter
                               ?s a ?src_c .
                               FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/2002/07/owl#'))
                               FILTER (!STRSTARTS(STR(?src_c), 'http://www.w3.org/ns/shacl#'))
@@ -756,6 +766,7 @@ class OntoGraf:
                 """
         query_text = Template(type_query).substitute(
             pattern=self.__filtered_graph_pattern(predicate),
+            bnode_filter=bnode_filter,
             limit=limit)
         return query_text
 

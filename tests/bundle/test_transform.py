@@ -5,35 +5,35 @@ from rdflib import Graph
 from rdflib.namespace import SKOS, RDF
 
 
-def test_transform_sparql():
+def test_transform_sparql(tmp_path):
     onto_tool.main([
-        'bundle', '-v', 'output', 'tests-output/bundle',
+        'bundle', '-v', 'output', f'{tmp_path}',
         '-v', 'lang', 'en', 'tests/bundle/transform_sparql.yaml'
     ])
 
     updated_graph = Graph()
-    updated_graph.parse('tests-output/bundle/transform_sparql_data_en.ttl', format='turtle')
+    updated_graph.parse(f'{tmp_path}/transform_sparql_data_en.ttl', format='turtle')
     without_lang = [label for label in updated_graph.objects(None, SKOS.prefLabel)
                     if label.language != 'en']
     assert len(without_lang) == 0
 
 
-def test_transform_java():
+def test_transform_java(tmp_path):
     onto_tool.main([
-        'bundle', '-v', 'output', 'tests-output/bundle',
+        'bundle', '-v', 'output', f'{tmp_path}',
         '-v', 'format', 'rdf-xml', 'tests/bundle/transform_java.yaml'
     ])
 
     updated_graph = Graph()
-    updated_graph.parse('tests-output/bundle/transform_sparql_data.xml', format='xml')
+    updated_graph.parse(f'{tmp_path}/transform_sparql_data.xml', format='xml')
     types = list(updated_graph.subject_objects(RDF.type))
     assert len(types) == 2
 
 
-def test_transform_shell(caplog):
+def test_transform_shell(caplog, tmp_path):
     with caplog.at_level(logging.DEBUG):
         onto_tool.main([
-            'bundle', '-v', 'output', 'tests-output/bundle',
+            'bundle', '-v', 'output', f'{tmp_path}',
             'tests/bundle/transform_shell.yaml'
         ])
 

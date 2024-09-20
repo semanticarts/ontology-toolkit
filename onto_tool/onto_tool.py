@@ -169,6 +169,8 @@ def generate_graphic(action, onto_files, endpoint, **kwargs):
         Read cached query results
     save_cache: TextIOWrapper
         Save query results as JSON to use with --cache
+    show_bnode_subjects: boolean
+        If true, triples with blank nodes in the subject will not be used to filtered out.
 
     Returns
     -------
@@ -308,7 +310,8 @@ def main(arguments):
                          exclude_pattern=args.exclude_pattern,
                          show_shacl=args.show_shacl,
                          cache=args.cache,
-                         save_cache=args.save_cache)
+                         save_cache=args.save_cache,
+                         show_bnode_subjects=args.show_bnode_subjects)
         return
 
     of = 'pretty-xml' if args.format == 'xml' else args.format
