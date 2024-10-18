@@ -243,7 +243,9 @@ def __bundle_defined_by__(action, variables):
             # copy as unchanged
             shutil.copy(in_out['inputFile'], in_out['outputFile'])
         else:
-            add_defined_by(g, ontology,
+            if not 'mode' in action:
+                action['mode'] = 'strict'
+            add_defined_by(g, ontology, mode=action['mode'],
                            replace=not __boolean_option__(
                                action, 'retainDefinedBy', variables),
                            versioned=__boolean_option__(action, 'versionedDefinedBy', variables))

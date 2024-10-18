@@ -362,10 +362,16 @@ emitted as a `INFO`-level log message prior to the execution of the action.
 ##### RDF Transformation
 
 - `definedBy`, which inspects each input file to identify a single defined ontology, and then
-  adds a `rdfs:isDefinedBy` property to every `owl:Class`, `owl:ObjectProperty`, `owl:DatatypeProperty`
-  and `owl:AnnotationProperty` defined in the file referencing the identified ontology. Existing
-  `rdfs:isDefinedBy` values are removed prior to the addition. Input and output file specification
-  options are identical to those used by the `copy` action.
+  adds a `rdfs:isDefinedBy` property referencing the identified ontology to resources defined in the
+  file.
+  - `mode` - has two possible values, `strict` (the default) and `all`. If `mode` is `strict`, any resources
+    with type `owl:Class`, `owl:ObjectProperty`, `owl:DatatypeProperty` and `owl:AnnotationProperty` is
+    annotated. Otherwise, `mode` is `all` and any resource with a type and at least one other property is
+    annotated. Existing `rdfs:isDefinedBy` values are removed prior to the addition. Input and output file
+    specification options are identical to those used by the `copy` action.
+  - `versionedDefinedBy` - use `owl:versionIRI` for `rdfs:isDefinedBy`, when available.
+  - `retainDefinedBy` - by default, `definedBy` will override any existing `rdfs:definedBy` annotations,
+    but if this option is provided, existing annotations will be left in place.
 - `export`, which functions similarly to the command-line export functionality, gathering one or
   more input ontologies and exporting them as a single file, with some optional transformations,
   depending on the following specified options:
