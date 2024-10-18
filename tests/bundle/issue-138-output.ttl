@@ -1,0 +1,16 @@
+@prefix : <https://data.clientX.com/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix star: <https://ontologies.pwc.com/starchart/> .
+
+:MyIndividual a star:Resource ;
+    skos:prefLabel "Tom" .
+
+<https://data.clientX.com/d/ontoName> a owl:Ontology ;
+    owl:versionIRI <https://data.clientX.com/d/ontoName1.0.0> .
+
+:myProperty a owl:DatatypeProperty ;
+    rdfs:isDefinedBy <https://data.clientX.com/d/ontoName1.0.0> ;
+    skos:prefLabel "my property" .
+

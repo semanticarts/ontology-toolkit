@@ -428,6 +428,11 @@ properties:
                     type: boolean
                   versionedDefinedBy:
                     type: boolean
+                  mode:
+                    type: string
+                    enum:
+                      - strict
+                      - all
         - if:
             properties:
               action:
