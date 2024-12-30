@@ -18,6 +18,12 @@ sudo apt install pipx
 pipx install onto_tool
 '''
 
+Then update your PATH environment variable to include `~/.local/bin`. For the bash shell, add this to the end of your ~/.bashrc file.
+
+'''
+export PATH="$PATH:~/.local/bin"
+'''
+
 For additional information see https://peps.python.org/pep-0668/ and https://stackoverflow.com/a/75722775.
 
 ## Development Install
