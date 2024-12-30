@@ -13,16 +13,16 @@ To install the most recent released version of the toolkit use `pip install onto
 On newer versions of Linux it may fail to install with a message like "error: externally-managed-environment".
 It is now recommended to use the pipx command to install python packages local to the user.
 
-'''
+```
 sudo apt install pipx
 pipx install onto_tool
-'''
+```
 
 Then update your PATH environment variable to include `~/.local/bin`. For the bash shell, add this to the end of your ~/.bashrc file.
 
-'''
+```
 export PATH="$PATH:~/.local/bin"
-'''
+```
 
 For additional information see https://peps.python.org/pep-0668/ and https://stackoverflow.com/a/75722775.
 
