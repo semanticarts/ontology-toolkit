@@ -4,9 +4,21 @@ Maintain version and dependency info in RDF ontologies.
 
 ## Installation
 
-## Easy Install 
+## Easy Install
 
-To install the most recent released version of the toolkit use `pip install onto-tool`. 
+To install the most recent released version of the toolkit use `pip install onto-tool`.
+
+### Linux: externally-managed-environment
+
+On newer versions of Linux it may fail to install with a message like "error: externally-managed-environment".
+It is now recommended to use the pipx command to install python packages local to the user.
+
+'''
+sudo apt install pipx
+pipx install onto_tool
+'''
+
+For additional information see https://peps.python.org/pep-0668/ and https://stackoverflow.com/a/75722775.
 
 ## Development Install
 
@@ -116,12 +128,12 @@ optional arguments:
 
 ### Graphic
 
-The `graphic` sub-command will create either 
+The `graphic` sub-command will create either
 * a comprehensive diagram showing ontology modules together with classes, object properties and individuals
   together with the path of imports, or (if the 'wee' option is selected) a simple diagram of the ontology
   import hierarchy, or
 * a diagram of the use of classes and object and data properties in a triple store or local ontology files.
-    
+
 Graphics are exported both as ```png``` files and also as a ```dot``` file.  This ```dot``` file can be used with Graphviz or with web tools such as [Dot Viewer](http://www.semantechs.co.uk/turtle-editor-viewer/)
 
 ```
@@ -331,12 +343,12 @@ and any action can contain a `message` attribute, the contents of which will be
 emitted as a `INFO`-level log message prior to the execution of the action.
 
 ##### Basic File Manipulation
-- `mkdir`, which requires a `directory` attribute to specify the path of the directory to be created 
+- `mkdir`, which requires a `directory` attribute to specify the path of the directory to be created
   (only if it doesn't already exist)
 - `copy`, which copies files into the bundle, and supports the following arguments:
   - `source`, `target`, `includes` and `excludes` - if neither `includes` or `excludes` is present,
    `source` and `target` are both  assumed to be file paths to a single file. If either`includes`
-    or `excludes` is provided, `source` and `target` are 
+    or `excludes` is provided, `source` and `target` are
     assumed to be directories, and each member of the `includes`/`excludes` lists is treated as a glob
     pattern inside the `source` directory. If `includes` is not present, it's presumed to be `*`, and
     `excludes` is applied after `includes`.
@@ -358,7 +370,7 @@ emitted as a `INFO`-level log message prior to the execution of the action.
     supported as shown in the `rename` documentation.
 - `move`, which moves files according the provided options, which are identical to the ones supported
   by `copy`.
-  
+
 ##### RDF Transformation
 
 - `definedBy`, which inspects each input file to identify a single defined ontology, and then
@@ -442,7 +454,6 @@ emitted as a `INFO`-level log message prior to the execution of the action.
       triple store directly, and a separate `update_uri` can be specified
       for databases which require it.
 
-  
 ##### Utility Actions
 - `markdown` transforms a `.md` file referenced in `source` into an HTML output specified in `target`.
 - `graph` reads RDF files provided via the `source` and `includes`/`excludes` options and generates a graphical
