@@ -21,7 +21,7 @@ setuptools.setup(
         'pydot',
         'jinja2',
         'markdown2',
-        'pyyaml==5.2',
+        'pyyaml==5.4',
         'jsonschema==3.2.0',
         'SPARQLWrapper==1.8.4',
         'pyshacl==0.19.0'
