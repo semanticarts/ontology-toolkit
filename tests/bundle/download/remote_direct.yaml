@@ -1,0 +1,16 @@
+bundle: test
+variables:
+  input: " https://ontologies.semanticarts.com/ontology/"
+  output: "tests/bundle/download"
+actions:
+  - action: 'sparql'
+    source: '{input}'
+    includes:
+      - gistCore.ttl
+    target: '{output}/sparql.csv'
+    query: >
+      prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?def_by
+      WHERE {{
+        [ rdfs:isDefinedBy ?def_by ] .
+      }} ORDER BY ?def_by

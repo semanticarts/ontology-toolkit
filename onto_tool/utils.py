@@ -3,8 +3,11 @@ import logging
 import re
 from glob import glob
 from os.path import isdir, isfile, join
+import tempfile
 import sys
+from urllib.parse import urlparse
 
+import requests
 from rdflib import ConjunctiveGraph, Graph, Literal, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SKOS, XSD
 from rdflib.plugins.parsers.notation3 import BadSyntax
@@ -154,6 +157,27 @@ def clean_merge_artifacts(g, iri, version):
         logging.debug('Transferring external dependency %s to %s',
                       i, iri)
         g.add((iri, OWL.imports, i))
+
+
+def is_remote(path: str) -> bool:
+    """True if resource is remote (downloable)"""
+    as_url = urlparse(path)
+    return as_url.scheme in ('http', 'https')
+
+
+def download_if_needed(path: str) -> str:
+    """If the path is a HTTP(S) URL, download to temporary file"""
+    if is_remote(path):
+        # Use instead of urlretrieve to get content after redirection
+        r = requests.get(path, allow_redirects=True, timeout=300)
+        if not r.ok:
+            return None
+        # TODO Won't be cleaned up for now, create context manager
+        tmp_file = tempfile.NamedTemporaryFile(delete=False)
+        with tmp_file:
+            tmp_file.write(r.content)
+        return tmp_file.name
+    return path
 
 
 def perform_export(output, output_format, paths, context=None,
