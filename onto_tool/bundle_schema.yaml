@@ -393,7 +393,11 @@ properties:
               action:
                 const: markdown
           then:
-            $ref: '#/definitions/bulk_file_operation'
+            allOf:
+              - $ref: '#/definitions/bulk_file_operation'
+              - properties:
+                  renameLinks:
+                    type: boolean
         - if:
             properties:
               action:

@@ -292,13 +292,12 @@ def __bundle_move__(action, variables):
 @register(name="markdown")
 def __bundle_markdown__(action, variables):
     logging.debug('Markdown %s', action)
-    logging.debug('Markdown %s', action)
     # The default rename is *.md -> *.html
     if 'rename' not in action:
         action['rename'] = {'from': "(.*)\\.md", 'to': "\\g<1>.html"}
     for in_out in __bundle_file_list(action, variables):
         with open(in_out['inputFile']) as md:
-            converted_md = md2html(md.read())
+            converted_md = md2html(md.read(), __boolean_option__(action, "renameLinks", variables))
         with open(in_out['outputFile'], 'w') as fd:
             converted_md.seek(0)
             shutil.copyfileobj(converted_md, fd, -1)
