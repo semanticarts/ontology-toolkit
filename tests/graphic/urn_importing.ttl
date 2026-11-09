@@ -1,0 +1,6 @@
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+<urn:example:importing> a owl:Ontology ;
+    owl:imports <urn:example:imported> .
+
+<urn:example:Importing> a owl:Class .

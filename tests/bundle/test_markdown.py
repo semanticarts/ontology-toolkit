@@ -32,7 +32,6 @@ def test_markdown_bulk(tmp_path):
     assert sorted(inc_and_exc) == ['b2.html', 'c3.html']
 
 
-
 def test_markdown_rename_links(tmp_path):
     onto_tool.main([
         'bundle', '-v', 'output', f'{tmp_path}',
