@@ -46,5 +46,5 @@ setuptools.setup(
             "onto_tool = onto_tool.onto_tool:run_tool"
         ]
     },
-    python_requires='>=3.8',
+    python_requires='>=3.11',
 )
