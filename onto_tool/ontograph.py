@@ -30,6 +30,16 @@ from .sparql_utils import create_endpoint, select_query
 # pylint: disable=W1401
 
 
+def _dot_id(name: str) -> str:
+    """
+    Quote a node ID for use in pydot nodes and edges.
+
+    Without quotes, pydot treats the ':' in a URI as a node:port separator
+    when rendering edge endpoints.
+    """
+    return '"' + name + '"'
+
+
 class OntoGraf:
     """Generates schema or instance graphs."""
 
@@ -318,7 +328,7 @@ class OntoGraf:
                     not wee or any(re.search(pat, ontology) for pat in wee)
                 )
                 if render_compact:
-                    node = pydot.Node(ontology_name)
+                    node = pydot.Node(_dot_id(ontology_name))
                 else:
                     ontology_info = "{{{}\\l\\l{}|{}|{}|{}|{}|{}}}".format(
                         file,
@@ -328,13 +338,13 @@ class OntoGraf:
                         file_data["data_propertiesList"],
                         file_data["annotation_propertiesList"],
                         file_data["gist_thingsList"])
-                    node = pydot.Node(ontology_name,
+                    node = pydot.Node(_dot_id(ontology_name),
                                       label=ontology_info)
 
                 self.graf.add_node(node)
 
                 for imported in file_data["imports"]:
-                    edge = pydot.Edge(ontology_name, imported,
+                    edge = pydot.Edge(_dot_id(ontology_name), _dot_id(imported),
                                       color=self.arrow_color,
                                       arrowhead=self.arrowhead)
                     self.graf.add_edge(edge)
@@ -853,7 +863,7 @@ class OntoGraf:
                 predicate, predicate_str, target = link
                 if predicate in compacted_links and target != class_:
                     continue
-                edge = pydot.Edge(class_, target,
+                edge = pydot.Edge(_dot_id(class_), _dot_id(target),
                                   label=predicate_str,
                                   penwidth=self.__line_width(num, max_common),
                                   color=self.shacl_color if predicate in self.shapes[
@@ -866,7 +876,7 @@ class OntoGraf:
                     max_common, class_, predicate, class_data, by_predicate[predicate])
 
             for super_class in class_data['supers']:
-                edge = pydot.Edge(class_, super_class,
+                edge = pydot.Edge(_dot_id(class_), _dot_id(super_class),
                                   penwidth=1,
                                   color=self.super_color,
                                   arrowhead='normal')
@@ -888,19 +898,19 @@ class OntoGraf:
         """
         shared_node_id = source_class + '_' + predicate
         shared_node = pydot.Node(
-            name='"' + shared_node_id + '"', shape='point', color="black")
+            name=_dot_id(shared_node_id), shape='point', color="black")
         self.graf.add_node(shared_node)
         total_count = sum(class_data['links'][link] for link in links)
         edge_color = self.shacl_color if predicate in self.shapes[
             source_class] else self.arrow_color
         predicate_label = next(link for link in links)[1]
         self.graf.add_edge(
-            pydot.Edge(source_class, shared_node_id,
+            pydot.Edge(_dot_id(source_class), _dot_id(shared_node_id),
                        label=predicate_label,
                        penwidth=self.__line_width(total_count, max_common), color=edge_color))
         for link in links:
             _, _, target = link
-            edge = pydot.Edge(shared_node_id, target,
+            edge = pydot.Edge(_dot_id(shared_node_id), _dot_id(target),
                               penwidth=self.__line_width(
                                   class_data['links'][link], max_common),
                               color=edge_color,
@@ -953,11 +963,11 @@ class OntoGraf:
                             color="darkgreen" if predicate in self.shapes[class_] else "black",
                             fontsize=round(node_font_size * 2 / 3),
                             prop=prop, dt=dt) for predicate, prop, dt in class_data['data'].keys()))
-            node = pydot.Node(name='"' + class_ + '"',
+            node = pydot.Node(name=_dot_id(class_),
                               margin="0",
                               label=class_info)
         else:
-            node = pydot.Node(name='"' + class_ + '"',
+            node = pydot.Node(name=_dot_id(class_),
                               label=class_label,
                               style='filled',
                               fontsize=node_font_size,
