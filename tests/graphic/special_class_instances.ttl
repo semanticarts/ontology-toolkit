@@ -1,0 +1,21 @@
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix : <http://example.com/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# Class labels are only gathered for classes in a subclass hierarchy
+:Thing a owl:Class; rdfs:label "Thing" .
+
+# Labels with characters that have special meaning in graphviz and HTML labels
+:Foo%26Bar a owl:Class; rdfs:subClassOf :Thing; rdfs:label "Foo & Bar" .
+:Special a owl:Class; rdfs:subClassOf :Thing; skos:prefLabel "A | {B} <C> \"D\"" .
+
+:refersTo a owl:ObjectProperty; rdfs:label "refers to" .
+:name a owl:DatatypeProperty; rdfs:label "name" .
+
+# Foo & Bar has a data property, so it is rendered with an HTML-like label
+:foo1 a :Foo%26Bar; :name "Foo 1"; :refersTo :special1 .
+
+# Special has no data properties, so it is rendered with a plain label
+:special1 a :Special .

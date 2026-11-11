@@ -1,6 +1,9 @@
+import shutil
+
 from onto_tool import onto_tool
 import glob
 import pydot
+import pytest
 
 
 def test_local_instance(tmp_path):
@@ -125,3 +128,38 @@ def test_shacl_instances(tmp_path):
     shacl_namespace = "http://www.w3.org/ns/shacl#"
     shacl_edges = [edge for edge in edges if any(shacl_namespace in part for part in edge)]
     assert 0 == len(shacl_edges)
+
+
+def test_special_class_labels(tmp_path):
+    onto_tool.main([
+        'graphic', '--predicate-threshold', '0', '--data',
+        '-t', 'Special Class Labels',
+        '--no-image',
+        '-o', f'{tmp_path}/test_special_labels',
+        'tests/graphic/special_class_instances.ttl'
+    ])
+    (instance_graph,) = pydot.graph_from_dot_file(f'{tmp_path}/test_special_labels.dot')
+    # Class with data properties uses an HTML-like label, which must be HTML-escaped
+    (foo_bar,) = instance_graph.get_node('"http://example.com/Foo%26Bar"')
+    assert '>Foo &amp; Bar</font>' in foo_bar.get('label')
+    # Class without data properties uses a plain quoted label
+    (special,) = instance_graph.get_node('"http://example.com/Special"')
+    assert special.get('label') == '"A | {B} <C> \\"D\\""'
+    edges = [(e.get_source(), e.get_destination()) for e in instance_graph.get_edges()]
+    assert edges == [('"http://example.com/Foo%26Bar"', '"http://example.com/Special"')]
+
+
+@pytest.mark.skipif(shutil.which('dot') is None, reason='graphviz not installed')
+def test_special_class_labels_render(tmp_path):
+    onto_tool.main([
+        'graphic', '--predicate-threshold', '0', '--data',
+        '-t', 'Special Class Labels',
+        '--no-image',
+        '-o', f'{tmp_path}/test_special_labels',
+        'tests/graphic/special_class_instances.ttl'
+    ])
+    (instance_graph,) = pydot.graph_from_dot_file(f'{tmp_path}/test_special_labels.dot')
+    # Graphviz fails on invalid labels, and renders the decoded text
+    svg = instance_graph.create_svg().decode('utf-8')
+    assert '>Foo &amp; Bar</text>' in svg
+    assert '>A | {B} &lt;C&gt; &quot;D&quot;</text>' in svg
