@@ -21,6 +21,7 @@ setuptools.setup(
         'pydot>=4.0.1',
         'jinja2>=3.1.6',
         'markdown2>=2.5.5',
+        'pygments>=2.21.0',
         'pyyaml>=5.2',
         'jsonschema>=3.2.0',
         'SPARQLWrapper~=1.8.4',

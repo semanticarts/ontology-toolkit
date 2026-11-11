@@ -63,3 +63,23 @@ def test_markdown_no_rename_links():
 def test_markdown_rename_links_malformed():
     with pytest.raises(ValueError, match='not well-formed'):
         md2html('<div>unclosed <b>bold</div>', True)
+
+
+def test_markdown_fenced_code_blocks():
+    md = 'Example:\n\n```python\nif x < 2:\n    print("[link](other.md)")\n```\n'
+    for rename in (False, True):
+        html_text = md2html(md, rename).read()
+        assert '<pre>' in html_text
+        # Fence language is not rendered as text, and code is escaped
+        assert '```' not in html_text
+        assert '&lt;' in html_text
+        # Markdown links inside code blocks are not converted to anchors
+        assert '<a ' not in html_text
+
+
+def test_markdown_highlight_css():
+    html_text = md2html('```python\nx = 1\n```\n', False).read()
+    style = html_text.split('<style>')[1].split('</style>')[0]
+    # Pygments styles for the classes used in highlighted code blocks
+    assert '.codehilite .k {' in style
+    assert '<span class="n">x</span>' in html_text

@@ -12,6 +12,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import jinja2
 import markdown2
+from pygments.formatters import HtmlFormatter
 
 
 _TEMPLATE = """<!DOCTYPE html>
@@ -33,6 +34,7 @@ _TEMPLATE = """<!DOCTYPE html>
         h6 code {
             font-size: inherit;
         }
+{{highlight_css}}
     </style>
 </head>
 <body>
@@ -42,6 +44,10 @@ _TEMPLATE = """<!DOCTYPE html>
 </body>
 </html>
 """
+
+# Syntax highlighting styles for fenced code blocks, which markdown2
+# renders via Pygments inside <div class="codehilite">
+_HIGHLIGHT_CSS = HtmlFormatter(style='default').get_style_defs('.codehilite')
 
 _WRAPPER_START = '<div>'
 _WRAPPER_END = '</div>'
@@ -96,10 +102,10 @@ def md2html(md: str, renameLinks: bool):
     Returns:
     docfile (file object): a file object containing the HTML5
     """
-    extensions = ['extra', 'smarty', 'tables']
+    extensions = ['extra', 'smarty', 'tables', 'fenced-code-blocks']
     html = markdown2.markdown(md, extras=extensions)
     if renameLinks:
         html = _rename_md_links(html)
-    doc = jinja2.Template(_TEMPLATE).render(content=html)
+    doc = jinja2.Template(_TEMPLATE).render(content=html, highlight_css=_HIGHLIGHT_CSS)
     docfile = io.StringIO(doc)
     return docfile
