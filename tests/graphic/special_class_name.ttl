@@ -1,0 +1,18 @@
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix : <http://example.com/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+:special a owl:Ontology .
+
+# Percent-encoded '&' in the local name; the label is shown in the schema graph
+:Foo%26Bar a owl:Class; rdfs:label "Foo & Bar" .
+
+# Label with characters that have special meaning in graphviz record labels
+:Special a owl:Class; skos:prefLabel "A | {B} <C> \"D\"" .
+
+# Label in the configured language (en) is preferred
+:Multi a owl:Class; rdfs:label "Mehrsprachig"@de, "Multilingual"@en .
+
+# No label, shown by local name
+:Baz a owl:Class .

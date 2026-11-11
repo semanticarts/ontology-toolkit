@@ -8,6 +8,7 @@ and then presents the results as a graphviz 'dot' file and a .png file.
 """
 
 import datetime
+import html
 import json
 import logging
 import os
@@ -21,7 +22,7 @@ from urllib.parse import urlparse, urlunparse
 
 import pydot
 from rdflib import BNode, Graph
-from rdflib.namespace import OWL, RDF
+from rdflib.namespace import OWL, RDF, RDFS, SKOS
 from rdflib.util import guess_format
 
 from .sparql_utils import create_endpoint, select_query
@@ -38,6 +39,14 @@ def _dot_id(name: str) -> str:
     when rendering edge endpoints.
     """
     return '"' + name + '"'
+
+
+def _record_text(text: str) -> str:
+    """
+    Escape characters with special meaning in a graphviz record label field.
+    Double quotes are escaped by pydot when it quotes the label.
+    """
+    return re.sub(r'([{}|<>])', r'\\\1', text)
 
 
 class OntoGraf:
@@ -171,6 +180,20 @@ class OntoGraf:
             return uri
         return stripped
 
+    def __preferred_label(self, labels, default: str) -> str:
+        """
+        Choose a label in the configured language, falling back to one without
+        a language tag, then to the default.
+
+        labels: iterable of (label text, language tag or None) pairs
+        """
+        labels = sorted(labels, key=lambda label: label[0])
+        for wanted in (self.label_lang, None):
+            for text, lang in labels:
+                if (lang or None) == wanted:
+                    return text
+        return default
+
     def gather_schema_info_from_files(self):
         """Load schema data from local ontology."""
         self.node_data = {}
@@ -182,15 +205,23 @@ class OntoGraf:
 
             ontology = next(graph.subjects(RDF.type, OWL.Ontology))
             ontology_name = self.__strip_uri(ontology)
-            classes = [self.__strip_uri(c) for c in graph.subjects(RDF.type, OWL.Class)
-                       if not isinstance(c, BNode) or self.show_bnode_subjects]
+            class_uris = [c for c in graph.subjects(RDF.type, OWL.Class)
+                          if not isinstance(c, BNode) or self.show_bnode_subjects]
+            # Classes are shown by label when available
+            classes = [
+                _record_text(self.__preferred_label(
+                    ((str(label), label.language)
+                     for label in graph.objects(c, RDFS.label | SKOS.prefLabel)),
+                    self.__strip_uri(c)))
+                for c in class_uris]
             obj_props = [self.__strip_uri(c)
                          for c in graph.subjects(RDF.type, OWL.ObjectProperty)]
             data_props = [self.__strip_uri(c)
                           for c in graph.subjects(RDF.type, OWL.DatatypeProperty)]
             annotation_props = [self.__strip_uri(c)
                                 for c in graph.subjects(RDF.type, OWL.AnnotationProperty)]
-            all_seen = set(classes + obj_props + data_props + annotation_props)
+            all_seen = set([self.__strip_uri(c) for c in class_uris] +
+                           obj_props + data_props + annotation_props)
             gist_things = [
                 self.__strip_uri(s) for (s, o) in graph.subject_objects(RDF.type)
                 if (not isinstance(s, BNode) or self.show_bnode_subjects) and
@@ -221,8 +252,9 @@ class OntoGraf:
             prefix xsd: <http://www.w3.org/2001/XMLSchema#>
             prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
             prefix gist: <https://ontologies.semanticarts.com/gist/>
+            prefix skos: <http://www.w3.org/2004/02/skos/core#>
 
-            select DISTINCT ?ontology ?entity ?type where {
+            select DISTINCT ?ontology ?entity ?type ?label ?label_lang where {
               graph ?g {
                 ?ontology a owl:Ontology .
                 {
@@ -234,6 +266,7 @@ class OntoGraf:
                   ?entity a ?type .
                   FILTER(?type != owl:Ontology)
                   $bnode_filter
+                  $label_pattern
                 }
               }
             }
@@ -245,8 +278,9 @@ class OntoGraf:
             prefix xsd: <http://www.w3.org/2001/XMLSchema#>
             prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
             prefix gist: <https://ontologies.semanticarts.com/gist/>
+            prefix skos: <http://www.w3.org/2004/02/skos/core#>
 
-            select DISTINCT ?ontology ?entity ?type where {
+            select DISTINCT ?ontology ?entity ?type ?label ?label_lang where {
               ?ontology a owl:Ontology .
               {
                 ?ontology owl:imports ?entity .
@@ -256,6 +290,7 @@ class OntoGraf:
               {
                 ?entity rdfs:isDefinedBy ?ontology; a ?type .
                 $bnode_filter
+                $label_pattern
               }
             }
             """
@@ -266,11 +301,28 @@ class OntoGraf:
             str(OWL.AnnotationProperty): 'annotation_propertiesList',
             str(OWL.imports): 'imports'
         }
+        # Classes are shown by label when available
+        label_pattern = Template("""
+                  OPTIONAL {
+                    FILTER(?type = owl:Class)
+                    ?entity rdfs:label|skos:prefLabel ?label
+                    FILTER(lang(?label) = '$language' || lang(?label) = '')
+                    BIND(lang(?label) as ?label_lang)
+                  }""").substitute(language=self.label_lang)
+        class_labels = defaultdict(set)
         for entity in self.__remote_select_query(
-                Template(onto_query).substitute(bnode_filter=bnode_filter)):
+                Template(onto_query).substitute(bnode_filter=bnode_filter,
+                                                label_pattern=label_pattern)):
             key = mapping.get(entity['type'], 'gist_thingsList')
-            onto_data[entity['ontology']][key].append(
-                self.__strip_uri(entity['entity']))
+            if key == 'classesList':
+                class_labels[(entity['ontology'], entity['entity'])].add(
+                    (entity.get('label'), entity.get('label_lang')))
+            else:
+                onto_data[entity['ontology']][key].append(
+                    self.__strip_uri(entity['entity']))
+        for (ontology, cls), labels in class_labels.items():
+            onto_data[ontology]['classesList'].append(_record_text(self.__preferred_label(
+                ((text, lang) for text, lang in labels if text), self.__strip_uri(cls))))
 
         if not onto_data:
             logging.warning(
@@ -945,7 +997,7 @@ class OntoGraf:
             formatted_label = '<font point-size="{fontsize}" color="{label_fg}">{class_label}</font>'.format(
                 label_fg="white" if class_ in self.shapes else "black",
                 fontsize=node_font_size,
-                class_label=class_label
+                class_label=html.escape(class_label, quote=False)
             )
             class_info = \
                 """<<table color="black" border="{line_width}" cellspacing="0" cellborder="1">
@@ -962,7 +1014,8 @@ class OntoGraf:
                         '<font point-size="{fontsize}" color="{color}">{prop}: {dt}</font>'.format(
                             color="darkgreen" if predicate in self.shapes[class_] else "black",
                             fontsize=round(node_font_size * 2 / 3),
-                            prop=prop, dt=dt) for predicate, prop, dt in class_data['data'].keys()))
+                            prop=html.escape(prop, quote=False), dt=html.escape(dt, quote=False))
+                        for predicate, prop, dt in class_data['data'].keys()))
             node = pydot.Node(name=_dot_id(class_),
                               margin="0",
                               label=class_info)
