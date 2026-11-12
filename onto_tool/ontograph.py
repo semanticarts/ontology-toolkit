@@ -188,9 +188,9 @@ class OntoGraf:
         labels: iterable of (label text, language tag or None) pairs
         """
         labels = sorted(labels, key=lambda label: label[0])
-        for wanted in (self.label_lang, None):
+        for wanted in (self.label_lang.lower(), None):
             for text, lang in labels:
-                if (lang.lower() or None) == wanted.lower():
+                if (lang.lower() if lang else None) == wanted:
                     return text
         return default
 
