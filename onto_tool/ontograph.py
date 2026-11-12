@@ -190,7 +190,7 @@ class OntoGraf:
         labels = sorted(labels, key=lambda label: label[0])
         for wanted in (self.label_lang, None):
             for text, lang in labels:
-                if (lang or None) == wanted:
+                if (lang.lower() or None) == wanted.lower():
                     return text
         return default
 
