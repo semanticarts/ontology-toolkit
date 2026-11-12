@@ -75,6 +75,12 @@ def replace_patterns_in_file(file, from_pattern, to_string):
         f.write(replaced)
 
 
+def __glob_files(src_dir, pattern):
+    """Return files (not directories) in src_dir matching pattern, which may use '**'."""
+    return [match for match in glob(os.path.join(src_dir, pattern), recursive=True)
+            if isfile(match)]
+
+
 def __bundle_file_list(action, variables, ignore_target=False):
     """
     Expand a source/target/includes spec into a list of inputFile/outputFile pairs.
@@ -116,19 +122,19 @@ def __bundle_file_list(action, variables, ignore_target=False):
         excluded_files = set()
         if 'excludes' in action:
             excluded_files = set(itertools.chain.from_iterable(
-                glob(os.path.join(src_dir, pattern), recursive=True) for pattern in action['excludes']))
+                __glob_files(src_dir, pattern) for pattern in action['excludes']))
         for pattern in include_pattern:
-            matches = list(glob(os.path.join(src_dir, pattern), recursive=True))
+            matches = __glob_files(src_dir, pattern)
             if not matches and not any(wildcard in pattern for wildcard in '[]*?'):
                 logging.warning('%s not found in %s', pattern, src_dir)
             for input_file in (m for m in matches if m not in excluded_files):
                 if ignore_target:
                     output_file = None
                 else:
-                    # We apply renaming to whatever the glob pattern matches, 
-                    # excluding the base 'source' directory. Leading pathsep needs
-                    # to be removed if the source directory didn't end with one
-                    input_fragment = re.sub(f"^{os.path.sep}+", "", input_file[len(src_dir):])
+                    # We apply renaming to whatever the glob pattern matches,
+                    # relative to the base 'source' directory. relpath handles
+                    # trailing separators on source and either separator on Windows
+                    input_fragment = os.path.relpath(input_file, src_dir)
                     if 'rename' in action:
                         from_pattern = re.compile(
                             action['rename']['from'].format(**variables))

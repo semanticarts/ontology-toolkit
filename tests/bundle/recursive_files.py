@@ -164,3 +164,37 @@ def test_recursive_glob_excludes(tmp_path, source_slash, target_slash):
 
     # Recursive patterns are also applied to excludes
     assert relative_files(target) == ['sub/a.ttl', 'top.ttl']
+
+
+@pytest.mark.parametrize('source_slash, target_slash', SLASH_VARIANTS)
+def test_recursive_glob_files_only(tmp_path, source_slash, target_slash):
+    source = tmp_path / 'source'
+    target = tmp_path / 'target'
+    make_source_tree(source)
+
+    run_copy(tmp_path, {
+        'source': str(source) + source_slash,
+        'target': str(target) + target_slash,
+        'includes': ['**']
+    })
+
+    # '**' also matches directories (including source itself), which are skipped;
+    # every file is copied exactly once, preserving structure
+    assert relative_files(target) == sorted(SOURCE_FILES.keys())
+    for path in relative_files(target):
+        assert read(target, path) == SOURCE_FILES[path]
+
+
+def test_directory_pattern_skipped(tmp_path):
+    source = tmp_path / 'source'
+    target = tmp_path / 'target'
+    make_source_tree(source)
+
+    run_copy(tmp_path, {
+        'source': str(source),
+        'target': str(target),
+        'includes': ['*']
+    })
+
+    # The 'sub' directory matches '*' but only top level files are copied
+    assert relative_files(target) == ['top.ttl', 'top.txt']
