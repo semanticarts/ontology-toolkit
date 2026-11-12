@@ -116,24 +116,32 @@ def __bundle_file_list(action, variables, ignore_target=False):
         excluded_files = set()
         if 'excludes' in action:
             excluded_files = set(itertools.chain.from_iterable(
-                glob(os.path.join(src_dir, pattern)) for pattern in action['excludes']))
+                glob(os.path.join(src_dir, pattern), recursive=True) for pattern in action['excludes']))
         for pattern in include_pattern:
-            matches = list(glob(os.path.join(src_dir, pattern)))
+            matches = list(glob(os.path.join(src_dir, pattern), recursive=True))
             if not matches and not any(wildcard in pattern for wildcard in '[]*?'):
                 logging.warning('%s not found in %s', pattern, src_dir)
             for input_file in (m for m in matches if m not in excluded_files):
                 if ignore_target:
                     output_file = None
                 else:
+                    # We apply renaming to whatever the glob pattern matches, 
+                    # excluding the base 'source' directory. Leading pathsep needs
+                    # to be removed if the source directory didn't end with one
+                    input_fragment = re.sub(f"^{os.path.sep}+", "", input_file[len(src_dir):])
                     if 'rename' in action:
                         from_pattern = re.compile(
                             action['rename']['from'].format(**variables))
                         to_pattern = action['rename']['to'].format(**variables)
                         output_file = from_pattern.sub(
                             to_pattern,
-                            os.path.basename(input_file))
+                            input_fragment)
                     else:
-                        output_file = os.path.basename(input_file)
+                        output_file = input_fragment
+                    # When the pattern descends into subdirectories, it's possible
+                    # that some subdirectories must be created on the output side as well
+                    if not isdir(os.path.dirname(os.path.join(tgt_dir, output_file))):
+                        os.makedirs(os.path.dirname(os.path.join(tgt_dir, output_file)))
                 yield {
                     'inputFile': input_file,
                     'outputFile': None if output_file is None
