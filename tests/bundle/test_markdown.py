@@ -71,7 +71,7 @@ def test_markdown_fenced_code_blocks():
         html_text = md2html(md, rename).read()
         assert '<pre>' in html_text
         # Fence language is not rendered as text, and code is escaped
-        assert '```' not in html_text
+        assert '```' not in html_text and 'python' not in html_text
         assert '&lt;' in html_text
         # Markdown links inside code blocks are not converted to anchors
         assert '<a ' not in html_text
