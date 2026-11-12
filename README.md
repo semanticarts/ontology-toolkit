@@ -360,7 +360,7 @@ emitted as a `INFO`-level log message prior to the execution of the action.
     `excludes` is applied after `includes`.
   - `rename` - If provided, must contain `from` and `to` attributes. When specified, each file
     is renamed as it is copied, where `from` is treated as a Python regular expression
-    applied to the base name of the source file, and `to` is the substitution string which
+    applied to the path of the source file relative to the `source`, and `to` is the substitution string which
     replaces it in the name of the target file. Backreferences are available for capturing groups, e.g.
     ```yaml
       rename:
