@@ -10,11 +10,14 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from glob import glob
 from os.path import basename, isdir, isfile, join, splitext
 from typing import List, Tuple
+from urllib.parse import urlparse
 
 import pyshacl
+import requests
 import yaml
 from jsonschema import validate
 from pyparsing import ParseException
@@ -41,6 +44,61 @@ class BundleFileException(Exception):
 
     def __init__(self, message, *args):
         super().__init__(message, *args)
+
+
+class RemoteJarCache:
+    """
+    Downloads remote (http/https) tool jars on first use.
+
+    Downloads are kept in a temporary directory, shared by all actions
+    in a bundle, until cleanup() is called.
+    """
+
+    DOWNLOAD_TIMEOUT = 60
+
+    def __init__(self):
+        self._temp_dir = None
+        self._jars = {}
+
+    def local_path(self, location: str) -> str:
+        """Return a local path for the jar, downloading it if location is remote."""
+        if urlparse(location).scheme.lower() not in ('http', 'https'):
+            return location
+        if location not in self._jars:
+            self._jars[location] = self.__download(location)
+        return self._jars[location]
+
+    def __download(self, url: str) -> str:
+        if self._temp_dir is None:
+            self._temp_dir = tempfile.TemporaryDirectory(prefix='onto_tool_')
+        # Separate directory per download, in case jar names collide
+        jar_dir = join(self._temp_dir.name, str(len(self._jars)))
+        os.makedirs(jar_dir)
+        logging.debug('Downloading %s', url)
+        try:
+            with requests.get(url, stream=True, allow_redirects=True,
+                              timeout=self.DOWNLOAD_TIMEOUT) as response:
+                response.raise_for_status()
+                if response.history:
+                    logging.debug('Redirected %s to %s', url, response.url)
+                # Name the jar after the final URL, since the original may be a
+                # redirecting link such as a 'latest release' URL
+                jar_path = join(jar_dir, basename(urlparse(response.url).path) or 'tool.jar')
+                with open(jar_path, 'wb') as jar_file:
+                    for chunk in response.iter_content(chunk_size=65536):
+                        jar_file.write(chunk)
+        except requests.RequestException as e:
+            raise BundleFileException(f'Unable to download {url}: {e}') from e
+        logging.debug('Downloaded %s to %s (%d bytes)', url, jar_path, os.path.getsize(jar_path))
+        return jar_path
+
+    def cleanup(self):
+        """Remove all downloaded jars."""
+        if self._temp_dir is not None:
+            logging.debug('Removing downloaded tools in %s', self._temp_dir.name)
+            self._temp_dir.cleanup()
+            self._temp_dir = None
+            self._jars = {}
 
 
 class VarDict(dict):
@@ -225,14 +283,17 @@ def __parse_update_query__(query_text):
     return parsed_query
 
 
-def __bundle_transform__(action, tools, variables):
+def __bundle_transform__(action, tools, variables, jar_cache):
     logging.debug('Transform %s', action)
     tool = next((t for t in tools if t['name'] == action['tool']), None)
     if not tool:
         raise BundleFileException('Missing tool ', action['tool'])
     if tool['type'] == 'Java':
+        jar = jar_cache.local_path(tool['jar'].format(**variables))
+        # Arguments are formatted again when the tool is run, so escape braces
+        jar = jar.replace('{', '{{').replace('}', '}}')
         __bundle_transform_shell__(
-            action, ["java", "-jar", tool['jar']] + tool['arguments'], variables)
+            action, ["java", "-jar", jar] + tool['arguments'], variables)
     elif tool['type'] == 'shell':
         __bundle_transform_shell__(action, tool['arguments'], variables)
     elif tool['type'] == 'sparql':
@@ -951,16 +1012,21 @@ def bundle_ontology(command_line_variables, bundle_path):
     variables.update(dict((n, v) for n, v in command_line_variables))
     substituted = dict((k, variables[k]) for k in variables)
 
-    for action in bundle['actions']:
-        if 'message' in action:
-            logging.info(action['message'].format(**substituted))
-        if action['action'] == 'transform':
-            __bundle_transform__(action, bundle['tools'], substituted)
-        elif action['action'] == 'mkdir':
-            path = action['directory'].format(**substituted)
-            if not isdir(path):
-                os.makedirs(path)
-        elif action['action'] in BUNDLE_ACTIONS:
-            BUNDLE_ACTIONS[action['action']](action, substituted)
-        else:
-            raise BundleFileException('Unknown action ' + str(action))
+    # Remote tool jars are downloaded once and removed when the bundle completes
+    jar_cache = RemoteJarCache()
+    try:
+        for action in bundle['actions']:
+            if 'message' in action:
+                logging.info(action['message'].format(**substituted))
+            if action['action'] == 'transform':
+                __bundle_transform__(action, bundle['tools'], substituted, jar_cache)
+            elif action['action'] == 'mkdir':
+                path = action['directory'].format(**substituted)
+                if not isdir(path):
+                    os.makedirs(path)
+            elif action['action'] in BUNDLE_ACTIONS:
+                BUNDLE_ACTIONS[action['action']](action, substituted)
+            else:
+                raise BundleFileException('Unknown action ' + str(action))
+    finally:
+        jar_cache.cleanup()

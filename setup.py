@@ -23,6 +23,7 @@ setuptools.setup(
         'markdown2>=2.5.5',
         'pygments>=2.21.0',
         'pyyaml>=6.0.3',
+        'requests>=2.34.2',
         'jsonschema>=3.2.0',
         'SPARQLWrapper~=1.8.4',
         'pyshacl~=0.19.0'
