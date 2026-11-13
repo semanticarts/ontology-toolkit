@@ -294,7 +294,7 @@ def main(arguments):
         __suppress_ssl_certificate_check()
 
     if args.command == 'bundle':
-        bundle_ontology(args.variables, args.bundle)
+        bundle_ontology(args.variables, args.bundle, insecure=args.insecure)
         return
 
     if args.command == 'graphic':

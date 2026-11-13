@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import warnings
 from glob import glob
 from os.path import basename, isdir, isfile, join, splitext
 from typing import List, Tuple
@@ -18,6 +19,7 @@ from urllib.parse import urlparse
 
 import pyshacl
 import requests
+import urllib3
 import yaml
 from jsonschema import validate
 from pyparsing import ParseException
@@ -56,7 +58,13 @@ class RemoteJarCache:
 
     DOWNLOAD_TIMEOUT = 60
 
-    def __init__(self):
+    def __init__(self, verify_certificates: bool = True):
+        """
+        verify_certificates: if False, HTTPS certificates are not checked (--insecure).
+        requests does not use the default ssl context overridden for --insecure,
+        so this has to be passed explicitly.
+        """
+        self._verify = verify_certificates
         self._temp_dir = None
         self._jars = {}
 
@@ -74,19 +82,24 @@ class RemoteJarCache:
         # Separate directory per download, in case jar names collide
         jar_dir = join(self._temp_dir.name, str(len(self._jars)))
         os.makedirs(jar_dir)
-        logging.debug('Downloading %s', url)
+        logging.debug('Downloading %s%s', url,
+                      '' if self._verify else ' without certificate verification')
         try:
-            with requests.get(url, stream=True, allow_redirects=True,
-                              timeout=self.DOWNLOAD_TIMEOUT) as response:
-                response.raise_for_status()
-                if response.history:
-                    logging.debug('Redirected %s to %s', url, response.url)
-                # Name the jar after the final URL, since the original may be a
-                # redirecting link such as a 'latest release' URL
-                jar_path = join(jar_dir, basename(urlparse(response.url).path) or 'tool.jar')
-                with open(jar_path, 'wb') as jar_file:
-                    for chunk in response.iter_content(chunk_size=65536):
-                        jar_file.write(chunk)
+            with warnings.catch_warnings():
+                if not self._verify:
+                    # Insecure connections were explicitly requested, don't warn on each one
+                    warnings.simplefilter('ignore', urllib3.exceptions.InsecureRequestWarning)
+                with requests.get(url, stream=True, allow_redirects=True, verify=self._verify,
+                                  timeout=self.DOWNLOAD_TIMEOUT) as response:
+                    response.raise_for_status()
+                    if response.history:
+                        logging.debug('Redirected %s to %s', url, response.url)
+                    # Name the jar after the final URL, since the original may be a
+                    # redirecting link such as a 'latest release' URL
+                    jar_path = join(jar_dir, basename(urlparse(response.url).path) or 'tool.jar')
+                    with open(jar_path, 'wb') as jar_file:
+                        for chunk in response.iter_content(chunk_size=65536):
+                            jar_file.write(chunk)
         except requests.RequestException as e:
             raise BundleFileException(f'Unable to download {url}: {e}') from e
         logging.debug('Downloaded %s to %s (%d bytes)', url, jar_path, os.path.getsize(jar_path))
@@ -976,7 +989,7 @@ def __create_output(compressed, filename):
     return open(filename, 'w', encoding="utf-8")
 
 
-def bundle_ontology(command_line_variables, bundle_path):
+def bundle_ontology(command_line_variables, bundle_path, insecure=False):
     """
     Bundle ontology and related artifacts for release.
 
@@ -986,6 +999,8 @@ def bundle_ontology(command_line_variables, bundle_path):
         list of variable values to substitute into the template.
     bundle_path : string
         Path to YAML or JSON bundle definition.
+    insecure : bool, optional
+        If True, don't verify HTTPS certificates when downloading remote tools.
 
     Returns
     -------
@@ -1013,7 +1028,7 @@ def bundle_ontology(command_line_variables, bundle_path):
     substituted = dict((k, variables[k]) for k in variables)
 
     # Remote tool jars are downloaded once and removed when the bundle completes
-    jar_cache = RemoteJarCache()
+    jar_cache = RemoteJarCache(verify_certificates=not insecure)
     try:
         for action in bundle['actions']:
             if 'message' in action:

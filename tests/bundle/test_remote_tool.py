@@ -1,7 +1,9 @@
 import logging
 import os
 import re
+import ssl
 import threading
+import warnings
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -43,16 +45,40 @@ class RecordingHandler(SimpleHTTPRequestHandler):
         pass
 
 
-@pytest.fixture
-def jar_server():
+# Self-signed certificate for 127.0.0.1, used only by these tests
+TLS_DIR = os.path.join('tests', 'bundle', 'tls')
+
+
+def run_server(tls=False):
+    """Start a server for the tests directory, yielding its base URL."""
     RecordingHandler.requests = []
     handler = partial(RecordingHandler, directory=os.path.abspath('tests'))
     server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
+    if tls:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(os.path.join(TLS_DIR, 'cert.pem'), os.path.join(TLS_DIR, 'key.pem'))
+        server.socket = context.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    yield f'http://127.0.0.1:{server.server_address[1]}'
+    yield f'{"https" if tls else "http"}://127.0.0.1:{server.server_address[1]}'
     server.shutdown()
     server.server_close()
+
+
+@pytest.fixture
+def jar_server():
+    yield from run_server()
+
+
+@pytest.fixture
+def jar_server_tls():
+    yield from run_server(tls=True)
+
+
+@pytest.fixture
+def restore_ssl_context(monkeypatch):
+    """--insecure overrides the default ssl context process-wide; restore it after the test."""
+    monkeypatch.setattr(ssl, '_create_default_https_context', ssl._create_default_https_context)
 
 
 def write_bundle(tmp_path, jar, outputs):
@@ -168,3 +194,23 @@ def test_remote_jar_redirect_missing(caplog, tmp_path, jar_server):
         onto_tool.main(['bundle', '--debug', bundle])
 
     assert RecordingHandler.requests == ['/redirect/missing.jar', '/missing.jar']
+
+
+def test_remote_jar_self_signed_rejected(tmp_path, jar_server_tls):
+    bundle = write_bundle(tmp_path, f'{jar_server_tls}/rdf-toolkit.jar', [tmp_path / 'out'])
+    with pytest.raises(BundleFileException, match='Unable to download .*CERTIFICATE_VERIFY_FAILED'):
+        onto_tool.main(['bundle', bundle])
+
+
+def test_remote_jar_self_signed_insecure(caplog, tmp_path, jar_server_tls, restore_ssl_context):
+    output = tmp_path / 'out'
+    bundle = write_bundle(tmp_path, f'{jar_server_tls}/rdf-toolkit.jar', [output])
+    with caplog.at_level(logging.DEBUG), warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        onto_tool.main(['--insecure', 'bundle', '--debug', bundle])
+
+    graph = Graph().parse(output / 'transform_sparql_data.xml', format='xml')
+    assert len(list(graph.subject_objects(RDF.type))) == 2
+    assert any('without certificate verification' in message for message in caplog.messages)
+    # Insecure connections were explicitly requested, so urllib3 does not warn about them
+    assert not [w for w in caught if 'Unverified HTTPS request' in str(w.message)]
