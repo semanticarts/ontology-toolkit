@@ -33,8 +33,9 @@ class RecordingHandler(SimpleHTTPRequestHandler):
             super().do_GET()
 
     def redirect(self, location):
+        safe_location = location.replace('\r', '').replace('\n', '')
         self.send_response(302)
-        self.send_header('Location', location)
+        self.send_header('Location', safe_location)
         self.send_header('Content-Length', '0')
         self.end_headers()
 
