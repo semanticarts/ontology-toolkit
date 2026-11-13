@@ -288,6 +288,9 @@ Values can reference other values using the `{name}` template syntax.
 All tools require a `name` by which they are referenced in `transform` actions. Three different tool types are supported:
 * Java tools (`type: "Java"`) require a path to the executable Jar file specified via the `jar` option,
   and a list of `arguments` that will be applied to each file processed.
+  The `jar` location may also be an `http` or `https` URL, in which case the Jar is downloaded once
+  to a temporary location, which is removed when the bundle completes (the download is logged when
+  `--debug` is specified).
   The `inputFile` and `outputFile` variables will be bound during execution, but other variables can be
   used to construct the arguments.
   tools:
