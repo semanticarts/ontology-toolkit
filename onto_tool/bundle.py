@@ -14,6 +14,7 @@ import tempfile
 import warnings
 from glob import glob
 from os.path import basename, isdir, isfile, join, splitext
+from pathlib import PureWindowsPath
 from typing import List, Tuple
 from urllib.parse import urlparse
 
@@ -140,9 +141,9 @@ def register(name):
 
 def replace_patterns_in_file(file, from_pattern, to_string):
     """Replace regex pattern in file contents."""
-    with open(file, 'r') as f:
+    with open(file, 'r', encoding='utf-8') as f:
         replaced = re.compile(from_pattern).sub(to_string, f.read())
-    with open(file, 'w') as f:
+    with open(file, 'w', encoding='utf-8') as f:
         f.write(replaced)
 
 
@@ -150,6 +151,20 @@ def __glob_files(src_dir, pattern):
     """Return files (not directories) in src_dir matching pattern, which may use '**'."""
     return [match for match in glob(os.path.join(src_dir, pattern), recursive=True)
             if isfile(match)]
+
+
+def __regex_replace_path(path: str, pattern: str, repl: str) -> str:
+    is_windows = os.name == "nt"
+    flags = (re.IGNORECASE if is_windows else 0)
+
+    # Convert to unix-style (forward slashes) on Windows only
+    unix_path = PureWindowsPath(path).as_posix() if is_windows else path
+
+    # Apply the regex replacement
+    replaced = re.sub(pattern, repl, unix_path, flags=flags)
+
+    # Convert back to native format on Windows only
+    return str(PureWindowsPath(replaced)) if is_windows else replaced
 
 
 def __bundle_file_list(action, variables, ignore_target=False):
@@ -207,12 +222,10 @@ def __bundle_file_list(action, variables, ignore_target=False):
                     # trailing separators on source and either separator on Windows
                     input_fragment = os.path.relpath(input_file, src_dir)
                     if 'rename' in action:
-                        from_pattern = re.compile(
-                            action['rename']['from'].format(**variables))
-                        to_pattern = action['rename']['to'].format(**variables)
-                        output_file = from_pattern.sub(
-                            to_pattern,
-                            input_fragment)
+                        output_file = __regex_replace_path(
+                            input_fragment,
+                            action['rename']['from'].format(**variables),
+                            action['rename']['to'].format(**variables))
                     else:
                         output_file = input_fragment
                     # When the pattern descends into subdirectories, it's possible
@@ -384,9 +397,9 @@ def __bundle_markdown__(action, variables):
     if 'rename' not in action:
         action['rename'] = {'from': "(.*)\\.md", 'to': "\\g<1>.html"}
     for in_out in __bundle_file_list(action, variables):
-        with open(in_out['inputFile']) as md:
+        with open(in_out['inputFile'], encoding='utf-8') as md:
             converted_md = md2html(md.read(), __boolean_option__(action, "renameLinks", variables))
-        with open(in_out['outputFile'], 'w') as fd:
+        with open(in_out['outputFile'], 'w', encoding='utf-8') as fd:
             converted_md.seek(0)
             shutil.copyfileobj(converted_md, fd, -1)
 
